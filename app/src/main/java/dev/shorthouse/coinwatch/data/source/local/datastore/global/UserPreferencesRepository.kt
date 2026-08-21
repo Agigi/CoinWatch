@@ -6,9 +6,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import timber.log.Timber
 import java.io.IOException
-import javax.inject.Inject
-
-class UserPreferencesRepository @Inject constructor(
+class UserPreferencesRepository(
     private val userPreferencesDataStore: DataStore<UserPreferences>,
 ) {
     val userPreferencesFlow: Flow<UserPreferences> = userPreferencesDataStore.data

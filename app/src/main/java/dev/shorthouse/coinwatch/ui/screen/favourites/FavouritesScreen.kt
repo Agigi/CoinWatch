@@ -5,9 +5,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,11 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -48,21 +44,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.tooling.preview.PreviewWrapper
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.shorthouse.coinwatch.R
-import dev.shorthouse.coinwatch.data.source.local.database.model.FavouriteCoin
 import dev.shorthouse.coinwatch.data.source.local.datastore.common.CoinSort
+import dev.shorthouse.coinwatch.model.Coin
 import dev.shorthouse.coinwatch.ui.component.CoinSortChip
 import dev.shorthouse.coinwatch.ui.component.LoadingIndicator
 import dev.shorthouse.coinwatch.ui.component.ScrollToTopFab
 import dev.shorthouse.coinwatch.ui.insets.AppWindowInsets
-import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
-import dev.shorthouse.coinwatch.ui.preview.FavouritesUiStatePreviewProvider
 import dev.shorthouse.coinwatch.ui.screen.favourites.component.FavouriteCondensedItem
 import dev.shorthouse.coinwatch.ui.screen.favourites.component.FavouriteItem
 import dev.shorthouse.coinwatch.ui.screen.favourites.component.FavouritesEmptyState
@@ -71,8 +61,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun FavouritesScreen(
-    viewModel: FavouritesViewModel = hiltViewModel(),
+    viewModel: FavouritesViewModel,
     onNavigateDetails: (String) -> Unit,
+    onNavigateSettings: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -100,7 +91,7 @@ fun FavouritesScreen(
 @Composable
 fun FavouriteScreen(
     uiState: FavouritesUiState,
-    onCoinClick: (FavouriteCoin) -> Unit,
+    onCoinClick: (Coin) -> Unit,
     onUpdateIsFavouritesCondensed: (Boolean) -> Unit,
     onUpdateCoinSort: (CoinSort) -> Unit,
     onRefresh: () -> Unit,
@@ -108,13 +99,21 @@ fun FavouriteScreen(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val gridState = rememberLazyGridState()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
-    val pullRefreshState = rememberPullToRefreshState()
+
     val showScrollToTopFab by remember {
         derivedStateOf {
-            gridState.firstVisibleItemIndex > 0
+            gridState.firstVisibleItemIndex > 2
+        }
+    }
+
+    uiState.errorMessageIds.firstOrNull()?.let { errorMessageId ->
+        val errorMessage = stringResource(errorMessageId)
+        LaunchedEffect(errorMessageId) {
+            snackbarHostState.showSnackbar(message = errorMessage)
+            onDismissError(errorMessageId)
         }
     }
 
@@ -123,8 +122,6 @@ fun FavouriteScreen(
             FavouritesTopBar(
                 isFavouritesCondensed = uiState.isFavouritesCondensed,
                 onUpdateIsFavouritesCondensed = onUpdateIsFavouritesCondensed,
-                isFavouritesListEmpty = uiState.isFavouriteCoinsEmpty,
-                isLoading = uiState.isLoading,
                 scrollBehavior = scrollBehavior
             )
         },
@@ -132,8 +129,8 @@ fun FavouriteScreen(
         floatingActionButton = {
             AnimatedVisibility(
                 visible = showScrollToTopFab,
-                enter = scaleIn(),
-                exit = scaleOut()
+                enter = scaleIn(animationSpec = tween(durationMillis = 200)),
+                exit = scaleOut(animationSpec = tween(durationMillis = 200))
             ) {
                 ScrollToTopFab(
                     onClick = {
@@ -144,26 +141,13 @@ fun FavouriteScreen(
                 )
             }
         },
-        contentWindowInsets = AppWindowInsets.horizontalContent,
-        modifier = modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
+        contentWindowInsets = AppWindowInsets.horizontalAndBottomContent,
+        modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
     ) { scaffoldPadding ->
-        PullToRefreshBox(
-            isRefreshing = uiState.isRefreshing,
-            onRefresh = onRefresh,
-            state = pullRefreshState,
-            indicator = {
-                PullToRefreshDefaults.Indicator(
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    isRefreshing = uiState.isRefreshing,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    state = pullRefreshState
-                )
-            },
+        Box(
             modifier = Modifier
                 .padding(scaffoldPadding)
+                .fillMaxSize()
         ) {
             when {
                 uiState.isLoading -> {
@@ -181,14 +165,6 @@ fun FavouriteScreen(
                     )
                 }
             }
-            if (uiState.errorMessageIds.isNotEmpty()) {
-                val errorMessage = stringResource(uiState.errorMessageIds.first())
-
-                LaunchedEffect(errorMessage, snackbarHostState) {
-                    snackbarHostState.showSnackbar(message = errorMessage)
-                    onDismissError(uiState.errorMessageIds.first())
-                }
-            }
         }
     }
 }
@@ -198,8 +174,6 @@ fun FavouriteScreen(
 fun FavouritesTopBar(
     isFavouritesCondensed: Boolean,
     onUpdateIsFavouritesCondensed: (Boolean) -> Unit,
-    isFavouritesListEmpty: Boolean,
-    isLoading: Boolean,
     scrollBehavior: TopAppBarScrollBehavior,
     modifier: Modifier = Modifier,
 ) {
@@ -212,22 +186,17 @@ fun FavouritesTopBar(
             )
         },
         actions = {
-            if (!isLoading && !isFavouritesListEmpty) {
-                IconButton(onClick = { onUpdateIsFavouritesCondensed(!isFavouritesCondensed) }) {
-                    Icon(
-                        imageVector = if (isFavouritesCondensed) {
-                            Icons.Rounded.GridView
-                        } else {
-                            Icons.Rounded.ViewStream
-                        },
-                        contentDescription = if (isFavouritesCondensed) {
-                            stringResource(R.string.cd_expand_favourites)
-                        } else {
-                            stringResource(R.string.cd_condense_favourites)
-                        },
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
+            IconButton(
+                onClick = { onUpdateIsFavouritesCondensed(!isFavouritesCondensed) }
+            ) {
+                Icon(
+                    imageVector = if (isFavouritesCondensed) {
+                        Icons.Rounded.GridView
+                    } else {
+                        Icons.Rounded.ViewStream
+                    },
+                    contentDescription = stringResource(R.string.cd_expand_favourites)
+                )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -241,39 +210,37 @@ fun FavouritesTopBar(
 
 @Composable
 fun FavouritesContent(
-    favouriteCoins: ImmutableList<FavouriteCoin>,
-    onCoinClick: (FavouriteCoin) -> Unit,
+    favouriteCoins: ImmutableList<Coin>,
+    onCoinClick: (Coin) -> Unit,
     isFavouritesCondensed: Boolean,
     coinSort: CoinSort,
     onUpdateCoinSort: (CoinSort) -> Unit,
     gridState: LazyGridState,
     modifier: Modifier = Modifier,
 ) {
-    CompositionLocalProvider(LocalOverscrollFactory provides null) {
-        when {
-            favouriteCoins.isEmpty() -> {
-                FavouritesEmptyState()
-            }
+    when {
+        favouriteCoins.isEmpty() -> {
+            FavouritesEmptyState()
+        }
 
-            else -> {
-                FavouritesGrid(
-                    favouriteCoins = favouriteCoins,
-                    onCoinClick = onCoinClick,
-                    isFavouritesCondensed = isFavouritesCondensed,
-                    coinSort = coinSort,
-                    onUpdateCoinSort = onUpdateCoinSort,
-                    gridState = gridState,
-                    modifier = modifier
-                )
-            }
+        else -> {
+            FavouritesGrid(
+                favouriteCoins = favouriteCoins,
+                onCoinClick = onCoinClick,
+                isFavouritesCondensed = isFavouritesCondensed,
+                coinSort = coinSort,
+                onUpdateCoinSort = onUpdateCoinSort,
+                gridState = gridState,
+                modifier = modifier
+            )
         }
     }
 }
 
 @Composable
 fun FavouritesGrid(
-    favouriteCoins: ImmutableList<FavouriteCoin>,
-    onCoinClick: (FavouriteCoin) -> Unit,
+    favouriteCoins: ImmutableList<Coin>,
+    onCoinClick: (Coin) -> Unit,
     isFavouritesCondensed: Boolean,
     coinSort: CoinSort,
     onUpdateCoinSort: (CoinSort) -> Unit,
@@ -296,30 +263,6 @@ fun FavouritesGrid(
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 80.dp),
         modifier = modifier,
     ) {
-        item(
-            span = { GridItemSpan(maxLineSpan) },
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(
-                        bottom = if (isFavouritesCondensed) {
-                            16.dp
-                        } else {
-                            0.dp
-                        }
-                    )
-            ) {
-                CoinSort.entries.forEach { coinSortEntry ->
-                    CoinSortChip(
-                        coinSort = coinSortEntry,
-                        selected = coinSortEntry == coinSort,
-                        onClick = { onUpdateCoinSort(coinSortEntry) }
-                    )
-                }
-            }
-        }
         items(
             count = favouriteCoins.size,
             key = { favouriteCoins[it].id },
@@ -335,7 +278,7 @@ fun FavouritesGrid(
                             bottomEnd = CornerSize(0.dp)
                         )
 
-                        index == favouriteCoins.lastIndex -> MaterialTheme.shapes.medium.copy(
+                        index == favouriteCoins.size - 1 -> MaterialTheme.shapes.medium.copy(
                             topStart = CornerSize(0.dp),
                             topEnd = CornerSize(0.dp)
                         )
@@ -369,21 +312,4 @@ fun FavouritesGrid(
             }
         )
     }
-}
-
-@Composable
-@Preview
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-private fun FavouritesScreenPreview(
-    @PreviewParameter(FavouritesUiStatePreviewProvider::class) uiState: FavouritesUiState,
-) {
-    FavouriteScreen(
-        uiState = uiState,
-        onCoinClick = {},
-        onUpdateIsFavouritesCondensed = {},
-        onUpdateCoinSort = {},
-        onRefresh = {},
-        onDismissError = {},
-    )
-
 }

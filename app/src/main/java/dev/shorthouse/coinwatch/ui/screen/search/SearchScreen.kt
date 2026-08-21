@@ -1,18 +1,12 @@
 package dev.shorthouse.coinwatch.ui.screen.search
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.clearText
-import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
@@ -20,31 +14,31 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.tooling.preview.PreviewWrapper
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.shorthouse.coinwatch.R
 import dev.shorthouse.coinwatch.model.SearchCoin
 import dev.shorthouse.coinwatch.ui.component.ErrorState
 import dev.shorthouse.coinwatch.ui.component.LoadingIndicator
 import dev.shorthouse.coinwatch.ui.insets.AppWindowInsets
-import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
-import dev.shorthouse.coinwatch.ui.preview.SearchScreenPreviewState
-import dev.shorthouse.coinwatch.ui.preview.SearchScreenPreviewStateProvider
 import dev.shorthouse.coinwatch.ui.screen.search.component.SearchListItem
 import dev.shorthouse.coinwatch.ui.screen.search.component.SearchQueryEmptyState
 import dev.shorthouse.coinwatch.ui.screen.search.component.SearchResultsEmptyState
@@ -52,14 +46,17 @@ import kotlinx.collections.immutable.ImmutableList
 
 @Composable
 fun SearchScreen(
-    viewModel: SearchViewModel = hiltViewModel(),
+    viewModel: SearchViewModel,
     onNavigateDetails: (String) -> Unit,
+    onNavigateSettings: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
 
     SearchScreen(
         uiState = uiState,
-        queryState = viewModel.queryState,
+        searchQuery = searchQuery,
+        onQueryChange = { viewModel.updateSearchQuery(it) },
         onCoinClick = { coin ->
             onNavigateDetails(coin.id)
         }
@@ -69,36 +66,40 @@ fun SearchScreen(
 @Composable
 fun SearchScreen(
     uiState: SearchUiState,
-    queryState: TextFieldState,
+    searchQuery: String,
+    onQueryChange: (String) -> Unit,
     onCoinClick: (SearchCoin) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(AppWindowInsets.horizontalContent)
-    ) {
-        SearchBar(queryState = queryState)
-
+    Scaffold(
+        topBar = {
+            SearchBar(
+                query = searchQuery,
+                onQueryChange = onQueryChange,
+            )
+        },
+        contentWindowInsets = AppWindowInsets.horizontalAndBottomContent,
+        modifier = modifier.fillMaxSize()
+    ) { scaffoldPadding ->
         when {
             uiState.isSearching -> {
-                LoadingIndicator()
+                LoadingIndicator(modifier = Modifier.padding(scaffoldPadding))
             }
 
             uiState.errorMessage != null -> {
                 ErrorState(
                     message = uiState.errorMessage,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    modifier = Modifier.padding(scaffoldPadding)
                 )
             }
 
             else -> {
                 SearchContent(
-                    queryIsEmpty = queryState.text.isEmpty(),
+                    queryIsEmpty = searchQuery.isEmpty(),
                     searchResults = uiState.searchResults,
                     queryHasNoResults = uiState.queryHasNoResults,
                     onCoinClick = onCoinClick,
+                    modifier = Modifier.padding(scaffoldPadding)
                 )
             }
         }
@@ -108,21 +109,21 @@ fun SearchScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchBar(
-    queryState: TextFieldState,
+    query: String,
+    onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
-        if (queryState.text.isEmpty()) {
-            focusRequester.requestFocus()
-        }
-    }
-
     SearchBarDefaults.InputField(
-        state = queryState,
-        onSearch = { keyboardController?.hide() },
+        query = query,
+        onQueryChange = onQueryChange,
+        onSearch = {
+            keyboardController?.hide()
+            focusManager.moveFocus(FocusDirection.Down)
+        },
         expanded = true,
         onExpandedChange = {},
         enabled = true,
@@ -141,8 +142,8 @@ private fun SearchBar(
             )
         },
         trailingIcon = {
-            if (queryState.text.isNotEmpty()) {
-                IconButton(onClick = { queryState.clearText() }) {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         tint = MaterialTheme.colorScheme.onSurface,
@@ -159,6 +160,30 @@ private fun SearchBar(
             .padding(8.dp)
             .fillMaxWidth()
             .focusRequester(focusRequester)
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown) {
+                    when (keyEvent.key) {
+                        Key.DirectionDown -> {
+                            keyboardController?.hide()
+                            focusManager.moveFocus(FocusDirection.Down)
+                            true
+                        }
+                        Key.DirectionUp -> {
+                            keyboardController?.hide()
+                            focusManager.moveFocus(FocusDirection.Up)
+                            true
+                        }
+                        Key.Enter, Key.NumPadEnter, Key.DirectionCenter -> {
+                            keyboardController?.hide()
+                            focusManager.moveFocus(FocusDirection.Down)
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
     )
 }
 
@@ -170,65 +195,29 @@ fun SearchContent(
     onCoinClick: (SearchCoin) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    when {
-        queryIsEmpty -> {
-            SearchQueryEmptyState()
-        }
+    Column(modifier = modifier.fillMaxSize()) {
+        when {
+            queryIsEmpty -> {
+                SearchQueryEmptyState()
+            }
 
-        queryHasNoResults -> {
-            SearchResultsEmptyState()
-        }
+            queryHasNoResults -> {
+                SearchResultsEmptyState()
+            }
 
-        else -> {
-            LazyColumn(
-                contentPadding = PaddingValues(12.dp),
-                modifier = modifier
-            ) {
-                items(
-                    count = searchResults.size,
-                    key = { index -> searchResults[index].id },
-                    itemContent = { index ->
-                        val searchCoin = searchResults[index]
-
-                        val cardShape = when {
-                            searchResults.size == 1 -> MaterialTheme.shapes.medium
-
-                            index == 0 -> MaterialTheme.shapes.medium.copy(
-                                bottomStart = CornerSize(0.dp),
-                                bottomEnd = CornerSize(0.dp)
-                            )
-
-                            index == searchResults.lastIndex ->
-                                MaterialTheme.shapes.medium.copy(
-                                    topStart = CornerSize(0.dp),
-                                    topEnd = CornerSize(0.dp)
-                                )
-
-                            else -> RoundedCornerShape(0.dp)
-                        }
-
+            else -> {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(
+                        items = searchResults,
+                        key = { coin -> coin.id }
+                    ) { item ->
                         SearchListItem(
-                            searchCoin = searchCoin,
-                            onCoinClick = onCoinClick,
-                            cardShape = cardShape
+                            searchCoin = item,
+                            onCoinClick = onCoinClick
                         )
                     }
-                )
+                }
             }
         }
     }
-}
-
-@Composable
-@Preview
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-private fun SearchScreenPreview(
-    @PreviewParameter(SearchScreenPreviewStateProvider::class) previewState: SearchScreenPreviewState,
-) {
-    SearchScreen(
-        uiState = previewState.uiState,
-        queryState = rememberTextFieldState(previewState.searchQuery),
-        onCoinClick = {}
-    )
-
 }

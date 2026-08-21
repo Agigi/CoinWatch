@@ -13,100 +13,106 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.shorthouse.coinwatch.R
-import dev.shorthouse.coinwatch.data.source.local.datastore.global.Currency
-import dev.shorthouse.coinwatch.model.CoinChart
-import dev.shorthouse.coinwatch.model.Percentage
+import dev.shorthouse.coinwatch.model.CandleEntry
+import dev.shorthouse.coinwatch.model.EmaAlignmentState
+import dev.shorthouse.coinwatch.model.IndicatorCalculator
 import dev.shorthouse.coinwatch.model.Price
-import dev.shorthouse.coinwatch.model.PriceEntry
-import dev.shorthouse.coinwatch.ui.component.PercentageChangeChip
-import dev.shorthouse.coinwatch.ui.component.ScrubPriceGraph
+import dev.shorthouse.coinwatch.ui.component.MpCombinedFinancialChart
 import dev.shorthouse.coinwatch.ui.model.ChartPeriod
-import dev.shorthouse.coinwatch.ui.model.ScrubData
-import kotlinx.collections.immutable.persistentListOf
-import java.math.BigDecimal
-import androidx.compose.ui.tooling.preview.PreviewWrapper
-import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
+import dev.shorthouse.coinwatch.ui.theme.NegativeRed
+import dev.shorthouse.coinwatch.ui.theme.PositiveGreen
+import kotlinx.collections.immutable.ImmutableList
 
 @Composable
 fun CoinChartCard(
     currentPrice: Price,
-    coinChart: CoinChart,
+    candles: ImmutableList<CandleEntry>,
     chartPeriod: ChartPeriod,
     onClickChartPeriod: (ChartPeriod) -> Unit,
+    exchange: String = "",
     modifier: Modifier = Modifier,
 ) {
-    var scrubData by remember { mutableStateOf<ScrubData?>(null) }
-
-    val displayPrice = if (scrubData != null) {
-        Price(
-            price = scrubData!!.price.toPlainString(),
-            currency = coinChart.currency,
-        )
-    } else {
-        currentPrice
-    }
-
-    val displayPercentage = scrubData?.changePercentage ?: coinChart.periodPriceChangePercentage
+    val emaPoints = remember(candles) { IndicatorCalculator.calculateEma3(candles) }
+    val emaAlignment = remember(emaPoints) { IndicatorCalculator.getLatestEmaAlignment(emaPoints) }
+    val cipherPoints = remember(candles) { IndicatorCalculator.calculateCipherB(candles) }
 
     Surface(
         shape = MaterialTheme.shapes.medium,
         modifier = modifier
     ) {
-        Column(modifier = Modifier.padding(vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) {
             Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
-                    text = displayPrice.formattedAmount,
+                    text = currentPrice.formattedAmount,
                     style = MaterialTheme.typography.headlineSmall
                 )
 
                 Spacer(Modifier.height(4.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    PercentageChangeChip(
-                        percentage = displayPercentage,
-                        modifier = Modifier.animateContentSize()
+                    val chartSubtitle = if (exchange.isNotBlank()) {
+                        "$exchange • K-Line (${chartPeriod.label})"
+                    } else {
+                        "K-Line (${chartPeriod.label})"
+                    }
+
+                    Text(
+                        text = chartSubtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Spacer(Modifier.width(8.dp))
 
-                    if (coinChart.priceHistory.isNotEmpty() && scrubData == null) {
-                        Text(
-                            text = stringResource(chartPeriod.longNameId),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    val (badgeText, badgeBg, badgeFg) = when (emaAlignment) {
+                        EmaAlignmentState.BULLISH -> Triple("EMA多頭", PositiveGreen, Color.White)
+                        EmaAlignmentState.BEARISH -> Triple("EMA空頭", NegativeRed, Color.White)
+                        EmaAlignmentState.ENTANGLED -> Triple("EMA糾纏", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                        EmaAlignmentState.INSUFFICIENT_DATA -> Triple("", Color.Transparent, Color.Transparent)
+                    }
+
+                    if (badgeText.isNotEmpty()) {
+                        Surface(
+                            color = badgeBg,
+                            shape = MaterialTheme.shapes.extraSmall,
+                            modifier = Modifier.padding(start = 4.dp)
+                        ) {
+                            Text(
+                                text = badgeText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = badgeFg,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(12.dp))
 
-            if (coinChart.priceHistory.isNotEmpty()) {
-                ScrubPriceGraph(
-                    priceHistory = coinChart.priceHistory,
-                    priceChangePercentage = coinChart.periodPriceChangePercentage,
-                    isGraphAnimated = true,
-                    onScrub = { scrubData = it },
+            if (candles.isNotEmpty()) {
+                MpCombinedFinancialChart(
+                    candles = candles,
+                    emaPoints = emaPoints,
+                    cipherPoints = cipherPoints,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .height(270.dp)
+                        .padding(horizontal = 12.dp)
                 )
             } else {
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .height(270.dp)
                 ) {
                     Text(
                         text = stringResource(R.string.empty_chart_message),
@@ -116,7 +122,7 @@ fun CoinChartCard(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
 
             ChartPeriodSelector(
                 selectedChartPeriod = chartPeriod,
@@ -125,49 +131,4 @@ fun CoinChartCard(
             )
         }
     }
-}
-
-@Preview
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-@Composable
-private fun CoinChartCardPreview() {
-    var chartPeriod by remember { mutableStateOf(ChartPeriod.Day) }
-
-    CoinChartCard(
-        currentPrice = Price("1000"),
-        coinChart = CoinChart(
-            currency = Currency.USD,
-            priceHistory = persistentListOf(
-                PriceEntry(BigDecimal("1755.19"), 1700000000L, "14 Nov 2023"),
-                PriceEntry(BigDecimal("1749.71"), 1700003600L, "14 Nov 2023"),
-                PriceEntry(BigDecimal("1750.94"), 1700007200L, "15 Nov 2023"),
-                PriceEntry(BigDecimal("1748.44"), 1700010800L, "15 Nov 2023"),
-                PriceEntry(BigDecimal("1743.98"), 1700014400L, "15 Nov 2023"),
-                PriceEntry(BigDecimal("1740.25"), 1700018000L, "15 Nov 2023"),
-                PriceEntry(BigDecimal("1737.53"), 1700021600L, "15 Nov 2023"),
-                PriceEntry(BigDecimal("1730.56"), 1700025200L, "15 Nov 2023"),
-            ),
-            periodPriceChangePercentage = Percentage("7.06")
-        ),
-        chartPeriod = chartPeriod,
-        onClickChartPeriod = { chartPeriod = it }
-    )
-
-}
-
-@Preview
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-@Composable
-private fun CoinChartEmptyCardPreview() {
-    CoinChartCard(
-        currentPrice = Price("1000"),
-        coinChart = CoinChart(
-            currency = Currency.USD,
-            priceHistory = persistentListOf(),
-            periodPriceChangePercentage = Percentage("7.06")
-        ),
-        chartPeriod = ChartPeriod.Day,
-        onClickChartPeriod = {}
-    )
-
 }

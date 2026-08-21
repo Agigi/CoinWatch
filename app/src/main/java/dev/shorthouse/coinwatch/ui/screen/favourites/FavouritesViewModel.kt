@@ -3,41 +3,23 @@ package dev.shorthouse.coinwatch.ui.screen.favourites
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.shorthouse.coinwatch.R
-import dev.shorthouse.coinwatch.common.Result
 import dev.shorthouse.coinwatch.data.source.local.datastore.common.CoinSort
-import dev.shorthouse.coinwatch.data.source.local.datastore.global.Currency
-import dev.shorthouse.coinwatch.data.source.local.database.model.FavouriteCoinId
-import dev.shorthouse.coinwatch.domain.favourites.GetFavouriteCoinIdsUseCase
-import dev.shorthouse.coinwatch.domain.favourites.GetFavouriteCoinsUseCase
-import dev.shorthouse.coinwatch.domain.preferences.GetFavouritesPreferencesUseCase
-import dev.shorthouse.coinwatch.domain.preferences.GetUserPreferencesUseCase
-import dev.shorthouse.coinwatch.domain.favourites.UpdateCachedFavouriteCoinsUseCase
-import dev.shorthouse.coinwatch.domain.preferences.UpdateFavouritesCoinSortUseCase
-import dev.shorthouse.coinwatch.domain.preferences.UpdateIsFavouritesCondensedUseCase
+import dev.shorthouse.coinwatch.data.source.local.preferences.FavouritesSharedPreferences
+import dev.shorthouse.coinwatch.data.source.remote.websocket.TradingViewWssManager
+import dev.shorthouse.coinwatch.model.Coin
+import dev.shorthouse.coinwatch.model.Percentage
+import dev.shorthouse.coinwatch.model.Price
 import kotlinx.collections.immutable.toImmutableList
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import javax.inject.Inject
-import kotlin.time.Duration.Companion.milliseconds
 
-@HiltViewModel
-class FavouritesViewModel @Inject constructor(
-    private val getFavouriteCoinsUseCase: GetFavouriteCoinsUseCase,
-    private val updateCachedFavouriteCoinsUseCase: UpdateCachedFavouriteCoinsUseCase,
-    private val getFavouriteCoinIdsUseCase: GetFavouriteCoinIdsUseCase,
-    private val getUserPreferencesUseCase: GetUserPreferencesUseCase,
-    private val getFavouritesPreferencesUseCase: GetFavouritesPreferencesUseCase,
-    private val updateIsFavouritesCondensedUseCase: UpdateIsFavouritesCondensedUseCase,
-    private val updateFavouritesCoinSortUseCase: UpdateFavouritesCoinSortUseCase,
+class FavouritesViewModel(
+    private val wssManager: TradingViewWssManager,
+    private val favouritesPreferences: FavouritesSharedPreferences
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(FavouritesUiState())
     val uiState = _uiState.asStateFlow()
@@ -47,129 +29,56 @@ class FavouritesViewModel @Inject constructor(
     }
 
     fun initialiseUiState() {
-        _uiState.update { it.copy(isLoading = true) }
-
-        val favouriteCoinIdsFlow = getFavouriteCoinIdsUseCase()
-        val userPreferencesFlow = getUserPreferencesUseCase()
-        val favouritesPreferencesFlow = getFavouritesPreferencesUseCase()
-
         combine(
-            favouriteCoinIdsFlow,
-            userPreferencesFlow,
-            favouritesPreferencesFlow
-        ) { favouriteCoinIdsResult, userPreferences, favouritesPreferences ->
-            when (favouriteCoinIdsResult) {
-                is Result.Success -> {
-                    updateCachedFavouriteCoins(
-                        coinIds = favouriteCoinIdsResult.data,
-                        currency = userPreferences.currency,
-                        coinSort = favouritesPreferences.coinSort
-                    )
-                }
+            wssManager.coinsData,
+            favouritesPreferences.favouriteSymbols
+        ) { realtimeDataMap, favSet ->
+            val favList = favSet.toList()
+            wssManager.subscribeSymbols(favList)
 
-                is Result.Error -> {
-                    addErrorMessage(R.string.error_local_favourite_coin_ids)
-                }
+            favList.map { symbol ->
+                val rt = realtimeDataMap[symbol]
+                val coinSymbol = symbol.substringAfter(":")
+
+                Coin(
+                    id = symbol,
+                    name = coinSymbol,
+                    symbol = rt?.description?.ifEmpty { coinSymbol } ?: coinSymbol,
+                    imageUrl = rt?.imageUrl ?: "",
+                    currentPrice = rt?.currentPrice ?: Price("0"),
+                    priceChangePercentage24h = rt?.priceChangePercentage24h ?: Percentage("0"),
+                    isFavourite = true
+                )
             }
-        }.launchIn(viewModelScope)
-
-        getFavouritesPreferencesUseCase().onEach { favouritesPreferences ->
+        }.onEach { favCoins ->
             _uiState.update {
                 it.copy(
-                    isFavouritesCondensed = favouritesPreferences.isFavouritesCondensed,
-                    coinSort = favouritesPreferences.coinSort
+                    favouriteCoins = favCoins.toImmutableList(),
+                    isLoading = false
                 )
             }
         }.launchIn(viewModelScope)
+    }
 
-        getFavouriteCoinsUseCase().onEach { favouriteCoinsResult ->
-            when (favouriteCoinsResult) {
-                is Result.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            favouriteCoins = favouriteCoinsResult.data.toImmutableList(),
-                            isFavouriteCoinsEmpty = favouriteCoinsResult.data.isEmpty()
-                        )
-                    }
-                }
+    fun updateIsFavouritesCondensed(isFavouritesCondensed: Boolean) {
+        _uiState.update { it.copy(isFavouritesCondensed = isFavouritesCondensed) }
+    }
 
-                is Result.Error -> {
-                    addErrorMessage(R.string.error_local_favourite_coins)
-                }
-            }
-
-            _uiState.update { it.copy(isLoading = false) }
-        }.launchIn(viewModelScope)
+    fun updateCoinSort(coinSort: CoinSort) {
+        _uiState.update { it.copy(coinSort = coinSort) }
     }
 
     fun pullRefreshFavouriteCoins() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true) }
-            delay(250.milliseconds)
-
-            val favouriteCoinIdsResult = getFavouriteCoinIdsUseCase().first()
-            val userPreferences = getUserPreferencesUseCase().first()
-            val favouritesPreferences = getFavouritesPreferencesUseCase().first()
-
-            when (favouriteCoinIdsResult) {
-                is Result.Success -> {
-                    updateCachedFavouriteCoins(
-                        coinIds = favouriteCoinIdsResult.data,
-                        currency = userPreferences.currency,
-                        coinSort = favouritesPreferences.coinSort
-                    )
-                }
-
-                is Result.Error -> {
-                    addErrorMessage(R.string.error_local_favourite_coin_ids)
-                }
-            }
-
-            _uiState.update { it.copy(isRefreshing = false) }
+        val favs = favouritesPreferences.favouriteSymbols.value.toList()
+        if (favs.isNotEmpty()) {
+            wssManager.subscribeSymbols(favs)
         }
     }
 
     fun dismissErrorMessage(@StringRes dismissedErrorMessageId: Int) {
         _uiState.update {
-            val errorMessageIds = it.errorMessageIds.filterNot { errorMessageId ->
-                errorMessageId == dismissedErrorMessageId
-            }
+            val errorMessageIds = it.errorMessageIds.filter { id -> id != dismissedErrorMessageId }
             it.copy(errorMessageIds = errorMessageIds)
-        }
-    }
-
-    fun updateIsFavouritesCondensed(isCondensed: Boolean) {
-        viewModelScope.launch {
-            updateIsFavouritesCondensedUseCase(isCondensed = isCondensed)
-        }
-    }
-
-    fun updateCoinSort(coinSort: CoinSort) {
-        viewModelScope.launch {
-            updateFavouritesCoinSortUseCase(coinSort = coinSort)
-        }
-    }
-
-    private suspend fun updateCachedFavouriteCoins(
-        coinIds: List<FavouriteCoinId>,
-        currency: Currency,
-        coinSort: CoinSort,
-    ) {
-        val updateCachedFavouriteCoinResult = updateCachedFavouriteCoinsUseCase(
-            coinIds = coinIds,
-            currency = currency,
-            coinSort = coinSort
-        )
-
-        if (updateCachedFavouriteCoinResult is Result.Error) {
-            addErrorMessage(R.string.error_network_favourite_coins)
-        }
-    }
-
-    private fun addErrorMessage(@StringRes errorMessageId: Int) {
-        _uiState.update {
-            val errorMessages = it.errorMessageIds + errorMessageId
-            it.copy(errorMessageIds = errorMessages)
         }
     }
 }

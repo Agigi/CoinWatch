@@ -7,15 +7,14 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
-import dagger.hilt.android.AndroidEntryPoint
+import dev.shorthouse.coinwatch.data.AppContainer
 import dev.shorthouse.coinwatch.navigation.AppNavHost
 import dev.shorthouse.coinwatch.ui.theme.AppTheme
 
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -31,15 +30,18 @@ class MainActivity : ComponentActivity() {
             )
         )
 
+        val appContainer = AppContainer(applicationContext)
+
         setContent {
             val navController = rememberNavController()
 
             AppTheme {
-                val viewModel: MainActivityViewModel = hiltViewModel()
+                val viewModel = remember { MainActivityViewModel() }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
                 if (!uiState.isLoading) {
                     AppNavHost(
+                        appContainer = appContainer,
                         navController = navController,
                         navigationBarStartScreen = uiState.startScreen
                     )

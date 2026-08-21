@@ -11,7 +11,7 @@ import dev.shorthouse.coinwatch.model.Percentage
 import dev.shorthouse.coinwatch.ui.preview.PercentagePreviewProvider
 import dev.shorthouse.coinwatch.ui.theme.NegativeRed
 import dev.shorthouse.coinwatch.ui.theme.PositiveGreen
-import androidx.compose.ui.tooling.preview.PreviewWrapper
+import dev.shorthouse.coinwatch.ui.preview.PreviewWrapper
 import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 @Composable

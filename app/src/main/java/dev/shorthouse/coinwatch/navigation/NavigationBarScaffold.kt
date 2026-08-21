@@ -1,7 +1,5 @@
 package dev.shorthouse.coinwatch.navigation
 
-import android.app.Activity
-import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.RowScope
@@ -22,13 +20,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.LifecycleResumeEffect
+
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -37,21 +32,22 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import dev.shorthouse.coinwatch.ui.review.launchInAppReview
+import dev.shorthouse.coinwatch.data.AppContainer
 import dev.shorthouse.coinwatch.ui.screen.favourites.FavouritesScreen
+import dev.shorthouse.coinwatch.ui.screen.favourites.FavouritesViewModel
 import dev.shorthouse.coinwatch.ui.screen.market.MarketScreen
-import dev.shorthouse.coinwatch.ui.screen.pulse.PulseScreen
+import dev.shorthouse.coinwatch.ui.screen.market.MarketViewModel
 import dev.shorthouse.coinwatch.ui.screen.search.SearchScreen
+import dev.shorthouse.coinwatch.ui.screen.search.SearchViewModel
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.coroutines.launch
 
 @Composable
 fun NavigationBarScaffold(
+    appContainer: AppContainer,
     startScreen: NavigationBarScreen,
     onNavigateDetails: (String) -> Unit,
     onNavigateSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: NavigationBarViewModel = hiltViewModel(),
 ) {
     val navController = rememberNavController()
 
@@ -59,24 +55,26 @@ fun NavigationBarScaffold(
         persistentListOf(
             NavigationBarScreen.Market,
             NavigationBarScreen.Favourites,
-            NavigationBarScreen.Pulse,
             NavigationBarScreen.Search
         )
     }
 
-    ReviewPromptOnResumeEffect(viewModel = viewModel)
-
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val showNavigationBar = navigationBarScreens.any { it.route == currentDestination?.route }
+
+    val showNavigationBar = navigationBarScreens.any { navigationBarScreen ->
+        currentDestination?.hierarchy?.any { destination ->
+            destination.route == navigationBarScreen.route
+        } == true
+    }
 
     Scaffold(
         bottomBar = {
             if (showNavigationBar) {
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    tonalElevation = 0.dp
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    windowInsets = WindowInsets(0, 0, 0, 0)
                 ) {
                     navigationBarScreens.forEach { screen ->
                         AddNavigationBarItem(
@@ -88,14 +86,14 @@ fun NavigationBarScaffold(
                 }
             }
         },
-        contentWindowInsets = WindowInsets(top = 0.dp, bottom = 0.dp),
-        content = { scaffoldPadding ->
+        content = { paddingValues ->
             NavigationBarNavHost(
+                appContainer = appContainer,
                 navController = navController,
                 startScreen = startScreen,
                 onNavigateDetails = onNavigateDetails,
                 onNavigateSettings = onNavigateSettings,
-                modifier = Modifier.padding(scaffoldPadding)
+                modifier = Modifier.padding(paddingValues)
             )
         },
         modifier = modifier
@@ -103,26 +101,8 @@ fun NavigationBarScaffold(
 }
 
 @Composable
-internal fun ReviewPromptOnResumeEffect(
-    viewModel: NavigationBarViewModel,
-    launchReview: suspend (Activity) -> Unit = { activity -> launchInAppReview(activity) },
-) {
-    val activity = LocalActivity.current ?: return
-    val coroutineScope = rememberCoroutineScope()
-
-    LifecycleResumeEffect(activity) {
-        coroutineScope.launch {
-            if (!viewModel.isReviewPromptEligible()) return@launch
-
-            viewModel.recordReviewPromptAttempted()
-            launchReview(activity)
-        }
-        onPauseOrDispose {}
-    }
-}
-
-@Composable
 private fun NavigationBarNavHost(
+    appContainer: AppContainer,
     navController: NavHostController,
     startScreen: NavigationBarScreen,
     onNavigateDetails: (String) -> Unit,
@@ -134,22 +114,47 @@ private fun NavigationBarNavHost(
         startDestination = startScreen.route,
         enterTransition = { EnterTransition.None },
         exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { ExitTransition.None },
         modifier = modifier
     ) {
         composable(route = NavigationBarScreen.Market.route) {
+            val viewModel = remember {
+                MarketViewModel(
+                    wssManager = appContainer.wssManager,
+                    favouritesPreferences = appContainer.favouritesPreferences
+                )
+            }
             MarketScreen(
+                viewModel = viewModel,
                 onNavigateDetails = onNavigateDetails,
                 onNavigateSettings = onNavigateSettings
             )
         }
         composable(route = NavigationBarScreen.Favourites.route) {
-            FavouritesScreen(onNavigateDetails = onNavigateDetails)
-        }
-        composable(route = NavigationBarScreen.Pulse.route) {
-            PulseScreen(onNavigateDetails = onNavigateDetails)
+            val viewModel = remember {
+                FavouritesViewModel(
+                    wssManager = appContainer.wssManager,
+                    favouritesPreferences = appContainer.favouritesPreferences
+                )
+            }
+            FavouritesScreen(
+                viewModel = viewModel,
+                onNavigateDetails = onNavigateDetails,
+                onNavigateSettings = onNavigateSettings
+            )
         }
         composable(route = NavigationBarScreen.Search.route) {
-            SearchScreen(onNavigateDetails = onNavigateDetails)
+            val viewModel = remember {
+                SearchViewModel(
+                    symbolSearchApi = appContainer.symbolSearchApi
+                )
+            }
+            SearchScreen(
+                viewModel = viewModel,
+                onNavigateDetails = onNavigateDetails,
+                onNavigateSettings = onNavigateSettings
+            )
         }
     }
 }
@@ -159,7 +164,6 @@ private fun RowScope.AddNavigationBarItem(
     screen: NavigationBarScreen,
     currentDestination: NavDestination?,
     navController: NavHostController,
-    modifier: Modifier = Modifier,
 ) {
     val selected = currentDestination?.hierarchy?.any { destination ->
         destination.route == screen.route
@@ -173,14 +177,16 @@ private fun RowScope.AddNavigationBarItem(
             )
         },
         icon = {
+            val icon = when (screen) {
+                NavigationBarScreen.Market -> Icons.Rounded.BarChart
+                NavigationBarScreen.Favourites -> Icons.Rounded.Favorite
+                NavigationBarScreen.Pulse -> Icons.Rounded.WifiTethering
+                NavigationBarScreen.Search -> Icons.Rounded.Search
+            }
+
             Icon(
-                imageVector = when (screen) {
-                    NavigationBarScreen.Market -> Icons.Rounded.BarChart
-                    NavigationBarScreen.Favourites -> Icons.Rounded.Favorite
-                    NavigationBarScreen.Pulse -> Icons.Rounded.WifiTethering
-                    NavigationBarScreen.Search -> Icons.Rounded.Search
-                },
-                contentDescription = null
+                imageVector = icon,
+                contentDescription = stringResource(screen.nameResourceId)
             )
         },
         selected = selected,
@@ -194,12 +200,11 @@ private fun RowScope.AddNavigationBarItem(
             }
         },
         colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = MaterialTheme.colorScheme.onSurface,
-            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+            selectedIconColor = MaterialTheme.colorScheme.primary,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
             indicatorColor = MaterialTheme.colorScheme.background,
             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-        ),
-        modifier = modifier
+        )
     )
 }

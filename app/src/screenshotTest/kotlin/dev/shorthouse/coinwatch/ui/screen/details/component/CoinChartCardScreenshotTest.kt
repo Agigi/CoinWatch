@@ -23,7 +23,7 @@ fun CoinChartCardScreenshotTest() {
                 priceHistory = persistentListOf(),
                 periodPriceChangePercentage = Percentage("7.06")
             ),
-            chartPeriod = ChartPeriod.Week,
+            chartPeriod = ChartPeriod.OneWeek,
             onClickChartPeriod = {}
         )
     }

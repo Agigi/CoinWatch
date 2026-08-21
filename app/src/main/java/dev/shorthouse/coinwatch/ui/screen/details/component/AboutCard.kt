@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import dev.shorthouse.coinwatch.R
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
-import androidx.compose.ui.tooling.preview.PreviewWrapper
+import dev.shorthouse.coinwatch.ui.preview.PreviewWrapper
 import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 @OptIn(ExperimentalLayoutApi::class)

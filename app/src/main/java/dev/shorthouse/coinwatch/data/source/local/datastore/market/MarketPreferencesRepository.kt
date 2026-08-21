@@ -7,9 +7,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import timber.log.Timber
 import java.io.IOException
-import javax.inject.Inject
-
-class MarketPreferencesRepository @Inject constructor(
+class MarketPreferencesRepository(
     private val marketPreferencesDataStore: DataStore<MarketPreferences>,
 ) {
     val marketPreferencesFlow: Flow<MarketPreferences> = marketPreferencesDataStore.data

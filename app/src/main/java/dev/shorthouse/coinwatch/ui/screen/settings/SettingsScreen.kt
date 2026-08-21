@@ -2,83 +2,54 @@ package dev.shorthouse.coinwatch.ui.screen.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.Launch
-import androidx.compose.material.icons.rounded.AttachMoney
-import androidx.compose.material.icons.rounded.BarChart
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.CurrencyPound
-import androidx.compose.material.icons.rounded.Euro
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Smartphone
-import androidx.compose.material.icons.rounded.StarRate
-import androidx.compose.material.icons.rounded.WifiTethering
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.shorthouse.coinwatch.BuildConfig
 import dev.shorthouse.coinwatch.R
-import dev.shorthouse.coinwatch.data.source.local.datastore.global.Currency
-import dev.shorthouse.coinwatch.data.source.local.datastore.global.StartScreen
-import dev.shorthouse.coinwatch.ui.component.ErrorState
-import dev.shorthouse.coinwatch.ui.component.LoadingIndicator
 import dev.shorthouse.coinwatch.ui.insets.AppWindowInsets
-import dev.shorthouse.coinwatch.ui.preview.SettingsUiStatePreviewProvider
-import dev.shorthouse.coinwatch.ui.screen.settings.component.CurrencyBottomSheet
 import dev.shorthouse.coinwatch.ui.screen.settings.component.SettingsGroup
 import dev.shorthouse.coinwatch.ui.screen.settings.component.SettingsItem
-import dev.shorthouse.coinwatch.ui.screen.settings.component.StartScreenBottomSheet
-import kotlinx.coroutines.launch
-import androidx.compose.ui.tooling.preview.PreviewWrapper
-import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 @Composable
 fun SettingsScreen(
     onNavigateUp: () -> Unit,
-    viewModel: SettingsViewModel = hiltViewModel(),
+    viewModel: SettingsViewModel,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     SettingsScreen(
         uiState = uiState,
         onNavigateUp = onNavigateUp,
-        onUpdateCurrency = { currency ->
-            viewModel.updateCurrency(currency)
-        },
-        onUpdateIsCurrencySheetShown = { showSheet ->
-            viewModel.updateIsCurrencySheetShown(showSheet)
-        },
-        onUpdateStartScreen = { startScreen ->
-            viewModel.updateStartScreen(startScreen)
-        },
-        onUpdateIsStartScreenSheetShown = { showSheet ->
-            viewModel.updateIsStartScreenSheetShown(showSheet)
+        onUpdateServerUrl = { newUrl ->
+            viewModel.updateServerUrl(newUrl)
         }
     )
 }
@@ -86,18 +57,11 @@ fun SettingsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    uiState: SettingsUiState,
+    uiState: CustomSettingsUiState,
     onNavigateUp: () -> Unit,
-    onUpdateCurrency: (Currency) -> Unit,
-    onUpdateIsCurrencySheetShown: (Boolean) -> Unit,
-    onUpdateStartScreen: (StartScreen) -> Unit,
-    onUpdateIsStartScreenSheetShown: (Boolean) -> Unit,
+    onUpdateServerUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val currencySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val startScreenSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-
     Scaffold(
         topBar = {
             SettingsTopBar(onNavigateUp = onNavigateUp)
@@ -105,77 +69,21 @@ fun SettingsScreen(
         contentWindowInsets = AppWindowInsets.horizontalAndBottomContent,
         modifier = modifier.fillMaxSize()
     ) { scaffoldPadding ->
-        when {
-            uiState.isLoading -> {
-                LoadingIndicator(modifier = Modifier.padding(scaffoldPadding))
-            }
-
-            uiState.errorMessage != null -> {
-                ErrorState(
-                    message = stringResource(R.string.error_state_settings),
-                    modifier = Modifier.padding(scaffoldPadding)
-                )
-            }
-
-            else -> {
-                SettingsContent(
-                    currency = uiState.currency,
-                    onUpdateIsCurrencySheetShown = onUpdateIsCurrencySheetShown,
-                    startScreen = uiState.startScreen,
-                    onUpdateIsStartScreenSheetShown = onUpdateIsStartScreenSheetShown,
-                    modifier = Modifier.padding(scaffoldPadding)
-                )
-
-                if (uiState.isCurrencySheetShown) {
-                    CurrencyBottomSheet(
-                        sheetState = currencySheetState,
-                        selectedCurrency = uiState.currency,
-                        onCurrencySelected = { currency ->
-                            onUpdateCurrency(currency)
-
-                            scope.launch {
-                                currencySheetState.hide()
-                            }.invokeOnCompletion {
-                                if (!currencySheetState.isVisible) {
-                                    onUpdateIsCurrencySheetShown(false)
-                                }
-                            }
-                        },
-                        onDismissRequest = { onUpdateIsCurrencySheetShown(false) }
-                    )
-                }
-
-                if (uiState.isStartScreenSheetShown) {
-                    StartScreenBottomSheet(
-                        sheetState = startScreenSheetState,
-                        selectedStartScreen = uiState.startScreen,
-                        onStartScreenSelected = { startScreen ->
-                            onUpdateStartScreen(startScreen)
-
-                            scope.launch {
-                                startScreenSheetState.hide()
-                            }.invokeOnCompletion {
-                                if (!startScreenSheetState.isVisible) {
-                                    onUpdateIsStartScreenSheetShown(false)
-                                }
-                            }
-                        },
-                        onDismissRequest = { onUpdateIsStartScreenSheetShown(false) })
-                }
-            }
-        }
+        SettingsContent(
+            serverUrl = uiState.serverUrl,
+            onUpdateServerUrl = onUpdateServerUrl,
+            modifier = Modifier.padding(scaffoldPadding)
+        )
     }
 }
 
 @Composable
 fun SettingsContent(
-    currency: Currency,
-    onUpdateIsCurrencySheetShown: (Boolean) -> Unit,
-    startScreen: StartScreen,
-    onUpdateIsStartScreenSheetShown: (Boolean) -> Unit,
+    serverUrl: String,
+    onUpdateServerUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val uriHandler = LocalUriHandler.current
+    var textValue by remember(serverUrl) { mutableStateOf(serverUrl) }
 
     Column(
         modifier = modifier
@@ -184,31 +92,26 @@ fun SettingsContent(
             .clip(MaterialTheme.shapes.medium)
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        SettingsGroup(title = stringResource(R.string.settings_group_preferences)) {
-            SettingsItem(
-                title = stringResource(R.string.settings_title_currency),
-                subtitle = stringResource(currency.nameId),
-                leadingIcon = when (currency) {
-                    Currency.USD -> Icons.Rounded.AttachMoney
-                    Currency.GBP -> Icons.Rounded.CurrencyPound
-                    Currency.EUR -> Icons.Rounded.Euro
-                },
-                trailingIcon = Icons.Rounded.ChevronRight,
-                onClick = { onUpdateIsCurrencySheetShown(true) }
-            )
-
-            SettingsItem(
-                title = stringResource(R.string.settings_title_start_screen),
-                subtitle = stringResource(startScreen.nameId),
-                leadingIcon = when (startScreen) {
-                    StartScreen.Market -> Icons.Rounded.BarChart
-                    StartScreen.Favourites -> Icons.Rounded.Favorite
-                    StartScreen.Pulse -> Icons.Rounded.WifiTethering
-                    StartScreen.Search -> Icons.Rounded.Search
-                },
-                trailingIcon = Icons.Rounded.ChevronRight,
-                onClick = { onUpdateIsStartScreenSheetShown(true) }
-            )
+        SettingsGroup(title = "WSS Proxy Server") {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = "wss_proxy.py Address (Host:Port)",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = textValue,
+                    onValueChange = {
+                        textValue = it
+                        onUpdateServerUrl(it)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Dns, contentDescription = null)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
         }
 
         SettingsGroup(title = stringResource(R.string.settings_group_about)) {
@@ -217,38 +120,6 @@ fun SettingsContent(
                 subtitle = BuildConfig.VERSION_NAME,
                 leadingIcon = Icons.Rounded.Smartphone,
                 onClick = {}
-            )
-
-            val sourceCodeUri = stringResource(R.string.source_code_uri)
-            SettingsItem(
-                title = stringResource(R.string.settings_title_source_code),
-                subtitle = stringResource(R.string.settings_subtitle_github),
-                leadingIcon = Icons.Rounded.Code,
-                trailingIcon = Icons.AutoMirrored.Rounded.Launch,
-                onClick = { uriHandler.openUri(sourceCodeUri) }
-            )
-
-            val privacyPolicyUri = stringResource(R.string.privacy_policy_uri)
-            SettingsItem(
-                title = stringResource(R.string.settings_title_privacy_policy),
-                leadingIcon = Icons.Rounded.Lock,
-                trailingIcon = Icons.AutoMirrored.Rounded.Launch,
-                onClick = { uriHandler.openUri(privacyPolicyUri) }
-            )
-        }
-
-        SettingsGroup(
-            title = stringResource(R.string.settings_group_feedback),
-            showBottomDivider = false
-        ) {
-            val appListingUri = stringResource(R.string.app_listing_uri)
-
-            SettingsItem(
-                title = stringResource(R.string.settings_title_rate),
-                subtitle = stringResource(R.string.settings_subtitle_rate),
-                leadingIcon = Icons.Rounded.StarRate,
-                trailingIcon = Icons.AutoMirrored.Rounded.Launch,
-                onClick = { uriHandler.openUri(appListingUri) }
             )
         }
     }
@@ -282,21 +153,4 @@ fun SettingsTopBar(
         ),
         modifier = modifier
     )
-}
-
-@Preview
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-@Composable
-private fun SettingsScreenPreview(
-    @PreviewParameter(SettingsUiStatePreviewProvider::class) uiState: SettingsUiState,
-) {
-    SettingsScreen(
-        uiState = uiState,
-        onNavigateUp = {},
-        onUpdateCurrency = {},
-        onUpdateIsCurrencySheetShown = {},
-        onUpdateStartScreen = {},
-        onUpdateIsStartScreenSheetShown = {}
-    )
-
 }

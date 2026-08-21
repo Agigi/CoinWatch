@@ -7,6 +7,7 @@ data class CoinDetails(
     val name: String,
     val symbol: String,
     val description: String,
+    val exchange: String = "",
     val tags: ImmutableList<String>,
     val links: ImmutableList<CoinLink>,
     val imageUrl: String,

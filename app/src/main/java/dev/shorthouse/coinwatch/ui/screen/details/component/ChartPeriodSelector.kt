@@ -1,98 +1,74 @@
 package dev.shorthouse.coinwatch.ui.screen.details.component
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.shorthouse.coinwatch.ui.model.ChartPeriod
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.compose.ui.tooling.preview.PreviewWrapper
-import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
+import dev.shorthouse.coinwatch.ui.theme.AppTheme
 
 @Composable
 fun ChartPeriodSelector(
     selectedChartPeriod: ChartPeriod,
     onChartPeriodSelected: (ChartPeriod) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.background,
+    Row(
+        horizontalArrangement = Arrangement.SpaceBetween,
         modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
     ) {
-        val chartPeriods = remember { ChartPeriod.values() }
-        var canClickChartPeriod by remember { mutableStateOf(true) }
-        val coroutineScope = rememberCoroutineScope()
-        val debounceDurationMillis by remember { mutableLongStateOf(800L) }
+        ChartPeriod.entries.forEach { chartPeriod ->
+            val selected = chartPeriod == selectedChartPeriod
 
-        Row(modifier = Modifier.padding(4.dp)) {
-            chartPeriods.forEach { chartPeriod ->
-                val backgroundColor = if (chartPeriod == selectedChartPeriod) {
-                    MaterialTheme.colorScheme.surface
-                } else {
-                    MaterialTheme.colorScheme.background
-                }
-
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(MaterialTheme.shapes.medium)
-                        .background(backgroundColor)
-                        .clickable(
-                            onClick = {
-                                if (canClickChartPeriod) {
-                                    canClickChartPeriod = false
-                                    onChartPeriodSelected(chartPeriod)
-
-                                    coroutineScope.launch {
-                                        delay(debounceDurationMillis)
-                                        canClickChartPeriod = true
-                                    }
-                                }
-                            },
-                            role = Role.RadioButton
-                        )
-                ) {
+            InputChip(
+                selected = selected,
+                onClick = { onChartPeriodSelected(chartPeriod) },
+                label = {
                     Text(
-                        text = stringResource(chartPeriod.shortNameId),
+                        text = chartPeriod.label,
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(vertical = 8.dp)
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
-                }
-            }
+                },
+                colors = InputChipDefaults.inputChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    containerColor = Color.Transparent
+                ),
+                border = null
+            )
         }
     }
 }
 
 @Composable
 @Preview
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
 private fun ChartPeriodSelectorPreview() {
-    var selectedChartPeriod by remember { mutableStateOf(ChartPeriod.Week) }
+    AppTheme {
+        var selectedChartPeriod by remember { mutableStateOf(ChartPeriod.OneDay) }
 
-    ChartPeriodSelector(
-        selectedChartPeriod = selectedChartPeriod,
-        onChartPeriodSelected = { selectedChartPeriod = it }
-    )
-
+        ChartPeriodSelector(
+            selectedChartPeriod = selectedChartPeriod,
+            onChartPeriodSelected = { selectedChartPeriod = it }
+        )
+    }
 }

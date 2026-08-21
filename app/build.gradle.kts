@@ -1,37 +1,24 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.hilt.android)
-    alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.screenshot)
 }
 
 android {
     namespace = "dev.shorthouse.coinwatch"
-    compileSdk = 37
-
-    experimentalProperties["android.experimental.enableScreenshotTest"] = true
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.shorthouse.coinwatch"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 28
         versionName = "1.5.0"
-        ndk {
-            debugSymbolLevel = "FULL"
-        }
-
-        testInstrumentationRunner = "dev.shorthouse.coinwatch.HiltTestRunner"
 
         vectorDrawables {
             useSupportLibrary = true
         }
-
-        buildConfigField("String", "API_KEY", getApiKey())
     }
     buildTypes {
         getByName("debug") {
@@ -61,38 +48,11 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
-    sourceSets {
-        getByName("androidTest") {
-            assets.directories += "$projectDir/schemas"
-        }
-    }
-    testOptions {
-        screenshotTests {
-            imageDifferenceThreshold = 0.005f // 0.5%
-        }
-        managedDevices {
-            localDevices {
-                create("pixel2api30") {
-                    device = "Pixel 2"
-                    apiLevel = 30
-                    systemImageSource = "aosp-atd"
-                    testedAbi = "x86"
-                }
-            }
-        }
-    }
 }
 
 kotlin {
     jvmToolchain(17)
 }
-
-tasks.withType<Test>()
-    .matching { it.name.contains("ScreenshotTest", ignoreCase = true) }
-    .configureEach {
-        systemProperty("user.language", "en")
-        systemProperty("user.country", "US")
-    }
 
 dependencies {
     // Core
@@ -121,22 +81,9 @@ dependencies {
     // Immutable collections
     implementation(libs.kotlinx.collections.immutable)
 
-    // Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.android.compiler)
-    ksp(libs.androidx.hilt.compiler)
-    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
-
-    // Retrofit
-    implementation(libs.retrofit)
-    implementation(libs.converter.gson)
+    // OkHttp
     implementation(libs.okhttp)
     implementation(libs.logging.interceptor)
-
-    // Room
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
 
     // DataStore
     implementation(libs.androidx.datastore)
@@ -154,42 +101,8 @@ dependencies {
     // Timber
     implementation(libs.timber)
 
-    // Testing
-    testImplementation(libs.junit)
-    testImplementation(libs.truth)
-    testImplementation(libs.truth.java8.extension)
-    testImplementation(libs.mockk)
-    testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.androidx.core.testing)
-
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.runner)
-    androidTestImplementation(libs.androidx.rules)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.ui.test.junit4)
-    androidTestImplementation(libs.androidx.room.testing)
-    androidTestImplementation(libs.hilt.android.testing)
-    kspAndroidTest(libs.hilt.android.compiler)
-    androidTestImplementation(libs.truth)
+    // MPAndroidChart
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
 
     debugImplementation(libs.androidx.compose.ui.tooling)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
-
-    // Screenshot testing
-    screenshotTestImplementation(platform(libs.androidx.compose.bom))
-    screenshotTestImplementation(libs.screenshot.validation.api)
-    screenshotTestImplementation(libs.androidx.compose.ui.tooling)
-}
-
-fun getApiKey(): String {
-    val apiKeyFile = rootProject.file("apikey.properties")
-
-    val apikeyProperties = Properties()
-    apikeyProperties.load(apiKeyFile.inputStream())
-
-    return apikeyProperties.getProperty("API_KEY")
-}
-
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
 }

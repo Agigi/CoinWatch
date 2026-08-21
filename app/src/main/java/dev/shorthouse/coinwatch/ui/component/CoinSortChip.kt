@@ -18,7 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import dev.shorthouse.coinwatch.R
 import dev.shorthouse.coinwatch.data.source.local.datastore.common.CoinSort
-import androidx.compose.ui.tooling.preview.PreviewWrapper
+import dev.shorthouse.coinwatch.ui.preview.PreviewWrapper
 import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 @Composable

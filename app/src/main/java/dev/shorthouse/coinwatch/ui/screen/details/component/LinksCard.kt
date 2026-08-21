@@ -27,7 +27,7 @@ import dev.shorthouse.coinwatch.model.CoinLink
 import dev.shorthouse.coinwatch.model.CoinLinkType
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
-import androidx.compose.ui.tooling.preview.PreviewWrapper
+import dev.shorthouse.coinwatch.ui.preview.PreviewWrapper
 import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 @Composable

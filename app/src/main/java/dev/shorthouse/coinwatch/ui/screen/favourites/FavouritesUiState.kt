@@ -1,12 +1,12 @@
 package dev.shorthouse.coinwatch.ui.screen.favourites
 
 import dev.shorthouse.coinwatch.data.source.local.datastore.common.CoinSort
-import dev.shorthouse.coinwatch.data.source.local.database.model.FavouriteCoin
+import dev.shorthouse.coinwatch.model.Coin
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 
 data class FavouritesUiState(
-    val favouriteCoins: ImmutableList<FavouriteCoin> = persistentListOf(),
+    val favouriteCoins: ImmutableList<Coin> = persistentListOf(),
     val isFavouritesCondensed: Boolean = false,
     val coinSort: CoinSort = CoinSort.MarketCap,
     val isFavouriteCoinsEmpty: Boolean = true,

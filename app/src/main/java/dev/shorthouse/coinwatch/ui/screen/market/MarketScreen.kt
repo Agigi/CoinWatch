@@ -6,17 +6,18 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,9 +31,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -47,13 +45,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.tooling.preview.PreviewWrapper
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.shorthouse.coinwatch.R
-import dev.shorthouse.coinwatch.data.source.local.database.model.Coin
 import dev.shorthouse.coinwatch.data.source.local.datastore.common.CoinSort
+import dev.shorthouse.coinwatch.model.Coin
 import dev.shorthouse.coinwatch.model.Percentage
 import dev.shorthouse.coinwatch.ui.component.CoinSortChip
 import dev.shorthouse.coinwatch.ui.component.LoadingIndicator
@@ -62,7 +58,8 @@ import dev.shorthouse.coinwatch.ui.insets.AppWindowInsets
 import dev.shorthouse.coinwatch.ui.model.TimeOfDay
 import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 import dev.shorthouse.coinwatch.ui.preview.MarketUiStatePreviewProvider
-import dev.shorthouse.coinwatch.ui.screen.market.component.MarketCoinItem
+import dev.shorthouse.coinwatch.ui.preview.PreviewWrapper
+import dev.shorthouse.coinwatch.ui.screen.favourites.component.FavouriteItem
 import dev.shorthouse.coinwatch.ui.screen.market.component.MarketDropdownMenu
 import dev.shorthouse.coinwatch.ui.screen.market.component.SearchPrompt
 import kotlinx.collections.immutable.ImmutableList
@@ -70,9 +67,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun MarketScreen(
+    viewModel: MarketViewModel,
     onNavigateDetails: (String) -> Unit,
     onNavigateSettings: () -> Unit,
-    viewModel: MarketViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -107,12 +104,11 @@ fun MarketScreen(
 ) {
     val scope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val pullRefreshState = rememberPullToRefreshState()
     val showScrollToTopFab by remember {
         derivedStateOf {
-            listState.firstVisibleItemIndex > 1
+            gridState.firstVisibleItemIndex > 2
         }
     }
 
@@ -135,7 +131,7 @@ fun MarketScreen(
                 ScrollToTopFab(
                     onClick = {
                         scope.launch {
-                            listState.animateScrollToItem(0)
+                            gridState.animateScrollToItem(0)
                         }
                     }
                 )
@@ -146,21 +142,8 @@ fun MarketScreen(
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
     ) { scaffoldPadding ->
-        PullToRefreshBox(
-            isRefreshing = uiState.isRefreshing,
-            onRefresh = onRefresh,
-            state = pullRefreshState,
-            indicator = {
-                PullToRefreshDefaults.Indicator(
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    isRefreshing = uiState.isRefreshing,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    state = pullRefreshState
-                )
-            },
-            modifier = Modifier
-                .padding(scaffoldPadding)
+        Box(
+            modifier = Modifier.padding(scaffoldPadding)
         ) {
             when {
                 uiState.isLoading -> {
@@ -173,7 +156,7 @@ fun MarketScreen(
                         onCoinClick = onCoinClick,
                         coinSort = uiState.coinSort,
                         onUpdateCoinSort = onUpdateCoinSort,
-                        lazyListState = listState
+                        gridState = gridState
                     )
                 }
             }
@@ -198,8 +181,6 @@ private fun MarketTopBar(
     scrollBehavior: TopAppBarScrollBehavior,
     modifier: Modifier = Modifier,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-
     TopAppBar(
         title = {
             Column(modifier = Modifier.animateContentSize()) {
@@ -223,21 +204,6 @@ private fun MarketTopBar(
                 }
             }
         },
-        actions = {
-            IconButton(onClick = { menuExpanded = !menuExpanded }) {
-                Icon(
-                    imageVector = Icons.Rounded.MoreVert,
-                    contentDescription = stringResource(R.string.cd_more),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
-
-            MarketDropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false },
-                onNavigateSettings = onNavigateSettings
-            )
-        },
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.background,
             scrolledContainerColor = MaterialTheme.colorScheme.background
@@ -253,62 +219,37 @@ private fun MarketContent(
     onCoinClick: (Coin) -> Unit,
     coinSort: CoinSort,
     onUpdateCoinSort: (CoinSort) -> Unit,
-    lazyListState: LazyListState,
+    gridState: LazyGridState,
     modifier: Modifier = Modifier,
 ) {
     if (coins.isEmpty()) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {}
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 140.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {}
     } else {
-        LazyColumn(
-            state = lazyListState,
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp),
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Adaptive(minSize = 140.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 80.dp),
             modifier = modifier
         ) {
-            item {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .horizontalScroll(rememberScrollState())
-                        .padding(bottom = 8.dp)
-                ) {
-                    CoinSort.entries.forEach { coinSortEntry ->
-                        CoinSortChip(
-                            coinSort = coinSortEntry,
-                            selected = coinSortEntry == coinSort,
-                            onClick = { onUpdateCoinSort(coinSortEntry) }
-                        )
-                    }
-                }
-            }
             items(
                 count = coins.size,
-                key = { coins[it].id },
-                itemContent = { index ->
-                    val coinListItem = coins[index]
+                key = { coins[it].id }
+            ) { index ->
+                val coinItem = coins[index]
+                FavouriteItem(
+                    favouriteCoin = coinItem,
+                    onCoinClick = { onCoinClick(coinItem) }
+                )
+            }
 
-                    val cardShape = when (index) {
-                        0 -> MaterialTheme.shapes.medium.copy(
-                            bottomStart = CornerSize(0.dp),
-                            bottomEnd = CornerSize(0.dp)
-                        )
-
-                        coins.lastIndex -> MaterialTheme.shapes.medium.copy(
-                            topStart = CornerSize(0.dp),
-                            topEnd = CornerSize(0.dp)
-                        )
-
-                        else -> RoundedCornerShape(0.dp)
-                    }
-
-                    MarketCoinItem(
-                        coin = coinListItem,
-                        onCoinClick = { onCoinClick(coinListItem) },
-                        cardShape = cardShape
-                    )
-                }
-            )
-
-            item {
+            item(
+                span = { GridItemSpan(maxLineSpan) }
+            ) {
                 SearchPrompt(modifier = Modifier.padding(vertical = 24.dp))
             }
         }
@@ -329,5 +270,4 @@ private fun MarketScreenPreview(
         onRefresh = {},
         onDismissError = {}
     )
-
 }

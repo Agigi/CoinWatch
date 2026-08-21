@@ -24,7 +24,7 @@ import dev.shorthouse.coinwatch.data.source.local.datastore.global.Currency
 import dev.shorthouse.coinwatch.ui.component.AppBottomSheet
 import dev.shorthouse.coinwatch.ui.component.BottomSheetOption
 import kotlinx.collections.immutable.persistentListOf
-import androidx.compose.ui.tooling.preview.PreviewWrapper
+import dev.shorthouse.coinwatch.ui.preview.PreviewWrapper
 import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,11 +85,10 @@ private data class CurrencyOption(
 @Composable
 private fun CurrencyBottomSheetPreview() {
     val density = LocalDensity.current
-    val sheetState = remember {
+    val sheetState = remember(density) {
         SheetState(
             skipPartiallyExpanded = true,
-            positionalThreshold = { with(density) { 56.dp.toPx() } },
-            velocityThreshold = { with(density) { 125.dp.toPx() } },
+            density = density,
             initialValue = SheetValue.Expanded,
         )
     }

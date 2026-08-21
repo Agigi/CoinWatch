@@ -6,45 +6,26 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
-import coil3.request.crossfade
-import coil3.svg.SvgDecoder
-import dev.shorthouse.coinwatch.data.source.local.database.model.FavouriteCoin
+import dev.shorthouse.coinwatch.model.Coin
 import dev.shorthouse.coinwatch.ui.component.PercentageChange
-import dev.shorthouse.coinwatch.ui.preview.FavouriteCoinPreviewProvider
-import androidx.compose.ui.tooling.preview.PreviewWrapper
-import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 @Composable
 fun FavouriteCondensedItem(
-    favouriteCoin: FavouriteCoin,
-    onCoinClick: (FavouriteCoin) -> Unit,
+    favouriteCoin: Coin,
+    onCoinClick: (Coin) -> Unit,
     cardShape: Shape,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-
-    val imageBuilder = remember(context) {
-        ImageRequest.Builder(context = context)
-            .decoderFactory(factory = SvgDecoder.Factory())
-    }
-
     Surface(
         shape = cardShape,
         modifier = modifier
@@ -55,17 +36,6 @@ fun FavouriteCondensedItem(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(12.dp)
         ) {
-            AsyncImage(
-                model = imageBuilder
-                    .data(favouriteCoin.imageUrl)
-                    .crossfade(true)
-                    .build(),
-                modifier = Modifier.size(32.dp),
-                contentDescription = null
-            )
-
-            Spacer(Modifier.width(16.dp))
-
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = favouriteCoin.name,
@@ -95,18 +65,4 @@ fun FavouriteCondensedItem(
             }
         }
     }
-}
-
-@Composable
-@Preview
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-private fun FavouriteItemCondensedPreview(
-    @PreviewParameter(FavouriteCoinPreviewProvider::class) favouriteCoin: FavouriteCoin,
-) {
-    FavouriteCondensedItem(
-        favouriteCoin = favouriteCoin,
-        onCoinClick = {},
-        cardShape = MaterialTheme.shapes.medium
-    )
-
 }

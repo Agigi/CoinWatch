@@ -14,7 +14,7 @@ import dev.shorthouse.coinwatch.ui.theme.AppTheme
 fun ChartPeriodSelectorScreenshotTest() {
     AppTheme {
         ChartPeriodSelector(
-            selectedChartPeriod = ChartPeriod.Week,
+            selectedChartPeriod = ChartPeriod.OneWeek,
             onChartPeriodSelected = {},
             modifier = Modifier.fillMaxWidth()
         )

@@ -29,7 +29,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.PreviewWrapper
+import dev.shorthouse.coinwatch.ui.preview.PreviewWrapper
 import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,11 +110,10 @@ fun BottomSheetOption(
 @PreviewWrapper(wrapper = AppPreviewWrapper::class)
 private fun AppBottomSheetPreview() {
     val density = LocalDensity.current
-    val sheetState = remember {
+    val sheetState = remember(density) {
         SheetState(
             skipPartiallyExpanded = true,
-            positionalThreshold = { with(density) { 56.dp.toPx() } },
-            velocityThreshold = { with(density) { 125.dp.toPx() } },
+            density = density,
             initialValue = SheetValue.Expanded,
         )
     }

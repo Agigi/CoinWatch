@@ -4,5 +4,8 @@ data class SearchCoin(
     val id: String,
     val name: String,
     val symbol: String,
-    val imageUrl: String
+    val imageUrl: String = "",
+    val exchange: String = "",
+    val exchangeLogoUrl: String = "",
+    val typespecs: String = ""
 )

@@ -39,9 +39,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
+import dev.shorthouse.coinwatch.model.CandleEntry
 import dev.shorthouse.coinwatch.model.Percentage
 import dev.shorthouse.coinwatch.model.PriceEntry
 import dev.shorthouse.coinwatch.ui.model.ScrubData
@@ -49,13 +49,11 @@ import dev.shorthouse.coinwatch.ui.theme.NegativeRed
 import dev.shorthouse.coinwatch.ui.theme.PositiveGreen
 import dev.shorthouse.coinwatch.ui.theme.ZeroWhite
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import java.math.BigDecimal
 import java.math.RoundingMode
+import kotlin.math.abs
 import kotlin.math.roundToInt
-import androidx.compose.ui.tooling.preview.PreviewWrapper
-import dev.shorthouse.coinwatch.ui.preview.AppPreviewWrapper
 
 private const val GRAPH_ANIMATION_DURATION_MS = 800
 private const val GRAPH_FILL_ALPHA = 0.5f
@@ -63,6 +61,66 @@ private const val SCRUB_FADED_FILL_ALPHA = 0.15f
 private const val SCRUB_FADED_LINE_ALPHA = 0.3f
 private const val SCRUB_GLOW_ALPHA = 0.4f
 private val GRAPH_LINE_STROKE_WIDTH = 3.dp
+
+@Composable
+fun CandleStickGraph(
+    candles: ImmutableList<CandleEntry>,
+    modifier: Modifier = Modifier,
+) {
+    if (candles.isEmpty()) return
+
+    val minPrice = remember(candles) { candles.minOfOrNull { it.low } ?: BigDecimal.ZERO }
+    val maxPrice = remember(candles) { candles.maxOfOrNull { it.high } ?: BigDecimal.ONE }
+
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val count = candles.size
+        if (count == 0) return@Canvas
+
+        val candleSlotWidth = width / count
+        val barWidth = candleSlotWidth * 0.7f
+
+        val minD = minPrice.toDouble()
+        val maxD = maxPrice.toDouble()
+        val range = if (maxD == minD) 1.0 else maxD - minD
+
+        fun getY(price: BigDecimal): Float {
+            val ratio = ((price.toDouble() - minD) / range).toFloat()
+            return height - (ratio * height)
+        }
+
+        candles.forEachIndexed { i, candle ->
+            val centerX = (i * candleSlotWidth) + (candleSlotWidth / 2f)
+            val openY = getY(candle.open)
+            val closeY = getY(candle.close)
+            val highY = getY(candle.high)
+            val lowY = getY(candle.low)
+
+            val isBullish = candle.close >= candle.open
+            val color = if (isBullish) PositiveGreen else NegativeRed
+
+            // Draw Wick Line (High to Low)
+            drawLine(
+                color = color,
+                start = Offset(centerX, highY),
+                end = Offset(centerX, lowY),
+                strokeWidth = 2.dp.toPx()
+            )
+
+            // Draw Body Box (Open to Close)
+            val topY = minOf(openY, closeY)
+            val bodyHeight = maxOf(abs(closeY - openY), 2.dp.toPx())
+            val leftX = centerX - (barWidth / 2f)
+
+            drawRect(
+                color = color,
+                topLeft = Offset(leftX, topY),
+                size = Size(barWidth, bodyHeight)
+            )
+        }
+    }
+}
 
 @Composable
 fun ScrubPriceGraph(
@@ -73,14 +131,12 @@ fun ScrubPriceGraph(
     modifier: Modifier = Modifier,
 ) {
     val prices = remember(priceHistory) { priceHistory.map { it.price }.toImmutableList() }
-
     val baseLineColor = remember(priceChangePercentage) { priceGraphColor(priceChangePercentage) }
 
     val progress = remember(priceHistory, isGraphAnimated) {
         Animatable(if (isGraphAnimated) 0f else 1f)
     }
 
-    // Replay the reveal animation when the data series or animation flag changes.
     LaunchedEffect(priceHistory, isGraphAnimated) {
         if (isGraphAnimated) {
             progress.snapTo(0f)
@@ -102,7 +158,6 @@ fun ScrubPriceGraph(
     val haptic = LocalHapticFeedback.current
     val currentOnScrub by rememberUpdatedState(onScrub)
 
-    // Reset scrub state when the price series changes, such as a chart period switch mid-scrub.
     LaunchedEffect(priceHistory) {
         selectedScrubIndex = clearScrubState(
             selectedScrubIndex = selectedScrubIndex,
@@ -127,7 +182,6 @@ fun ScrubPriceGraph(
         ?.let { priceHistory[it].formattedDate.ifEmpty { null } }
 
     Column(modifier = modifier) {
-        // Fixed height keeps the graph from shifting when the date label appears.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -180,7 +234,6 @@ fun ScrubPriceGraph(
                     awaitEachGesture {
                         val down = awaitFirstDown()
                         if (progress.value < 1f) return@awaitEachGesture
-
                         if (size.width <= 0) return@awaitEachGesture
 
                         var isScrubbing = false
@@ -199,7 +252,6 @@ fun ScrubPriceGraph(
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
                             isScrubbing = true
-
                             down.consume()
 
                             val activePointerId = down.id
@@ -267,40 +319,12 @@ fun StaticPriceGraph(
     modifier: Modifier = Modifier,
 ) {
     val lineColor = remember(priceChangePercentage) { priceGraphColor(priceChangePercentage) }
-
     val fillColor = lineColor.copy(alpha = GRAPH_FILL_ALPHA)
 
     Box(modifier = modifier) {
         PriceGraphCanvas(
             prices = prices,
             canvasTag = "staticPriceGraphCanvas",
-            modifier = Modifier.matchParentSize(),
-        ) { paths, _ ->
-            drawPriceGraph(
-                paths = paths,
-                lineColor = lineColor,
-                fillColor = fillColor,
-            )
-        }
-    }
-}
-
-/**
- * A line graph for non-price data (e.g. Fear & Greed history) where the caller
- * supplies the [lineColor] directly rather than deriving it from a percentage.
- */
-@Composable
-fun StaticLineGraph(
-    values: ImmutableList<BigDecimal>,
-    lineColor: Color,
-    modifier: Modifier = Modifier,
-) {
-    val fillColor = lineColor.copy(alpha = GRAPH_FILL_ALPHA)
-
-    Box(modifier = modifier) {
-        PriceGraphCanvas(
-            prices = values,
-            canvasTag = "staticLineGraphCanvas",
             modifier = Modifier.matchParentSize(),
         ) { paths, _ ->
             drawPriceGraph(
@@ -391,7 +415,6 @@ private fun calculateScrubIndex(
     lastIndex: Int,
 ): Int {
     if (canvasWidth <= 0f || lastIndex < 0) return -1
-
     return (xPosition.coerceIn(0f, canvasWidth) / canvasWidth * lastIndex)
         .roundToInt()
         .coerceIn(0, lastIndex)
@@ -404,7 +427,6 @@ private fun clearScrubState(
     if (selectedScrubIndex != null) {
         onScrub(null)
     }
-
     return null
 }
 
@@ -457,7 +479,6 @@ private fun buildPriceGraphPaths(
     canvasHeight: Float,
 ): PriceGraphPaths? {
     if (points.size < 2) return null
-
     return PriceGraphPaths(
         line = buildSmoothedPath(points),
         fill = buildSmoothedPath(points, closedToBottom = canvasHeight),
@@ -541,7 +562,6 @@ private fun DrawScope.drawPriceGraph(
     )
 }
 
-// Double arithmetic avoids ArithmeticException for non-terminating decimal ratios.
 private fun mapPricesToPoints(
     prices: List<BigDecimal>,
     minPrice: BigDecimal,
@@ -569,12 +589,6 @@ private fun mapPricesToPoints(
     }
 }
 
-/**
- * Builds a smooth cubic-bezier path through [points].
- *
- * When [closedToBottom] is non-null, the path is extended down to that
- * y-coordinate on both sides and closed, producing a fill shape.
- */
 private fun buildSmoothedPath(
     points: List<Offset>,
     closedToBottom: Float? = null,
@@ -597,77 +611,4 @@ private fun buildSmoothedPath(
         lineTo(points.last().x, closedToBottom)
         close()
     }
-}
-
-@Composable
-@Preview(showBackground = true)
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-private fun ScrubPriceGraphPreview() {
-    ScrubPriceGraph(
-        onScrub = {},
-        priceHistory = persistentListOf(
-            PriceEntry(BigDecimal("1650.19"), 1700000000L, "14 Nov 2023"),
-            PriceEntry(BigDecimal("1650.71"), 1700003600L, "14 Nov 2023"),
-            PriceEntry(BigDecimal("1670.94"), 1700007200L, "15 Nov 2023"),
-            PriceEntry(BigDecimal("1680.44"), 1700010800L, "15 Nov 2023"),
-            PriceEntry(BigDecimal("1743.98"), 1700014400L, "15 Nov 2023"),
-            PriceEntry(BigDecimal("1740.25"), 1700018000L, "15 Nov 2023"),
-            PriceEntry(BigDecimal("1737.53"), 1700021600L, "15 Nov 2023"),
-            PriceEntry(BigDecimal("1730.56"), 1700025200L, "15 Nov 2023"),
-            PriceEntry(BigDecimal("1738.12"), 1700028800L, "15 Nov 2023"),
-            PriceEntry(BigDecimal("1736.10"), 1700032400L, "15 Nov 2023"),
-        ),
-        priceChangePercentage = Percentage("0.42"),
-        isGraphAnimated = false,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(250.dp),
-    )
-
-}
-
-@Composable
-@Preview(showBackground = true)
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-private fun StaticPriceGraphPreview() {
-    StaticPriceGraph(
-        prices = persistentListOf(
-            BigDecimal("1650.19"),
-            BigDecimal("1650.71"),
-            BigDecimal("1670.94"),
-            BigDecimal("1680.44"),
-            BigDecimal("1743.98"),
-            BigDecimal("1740.25"),
-            BigDecimal("1737.53"),
-            BigDecimal("1730.56"),
-        ),
-        priceChangePercentage = Percentage("0.42"),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(250.dp),
-    )
-
-}
-
-@Composable
-@Preview(showBackground = true)
-@PreviewWrapper(wrapper = AppPreviewWrapper::class)
-private fun StaticLineGraphPreview() {
-    StaticLineGraph(
-        values = persistentListOf(
-            BigDecimal("54"),
-            BigDecimal("50"),
-            BigDecimal("48"),
-            BigDecimal("52"),
-            BigDecimal("46"),
-            BigDecimal("41"),
-            BigDecimal("39"),
-            BigDecimal("36"),
-        ),
-        lineColor = NegativeRed,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(250.dp),
-    )
-
 }
