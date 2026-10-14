@@ -81,6 +81,7 @@ fun MpCombinedFinancialChart(
                 isDragEnabled = true
                 setScaleEnabled(true)
                 setPinchZoom(true)
+                isAutoScaleMinMaxEnabled = true
                 setDrawGridBackground(false)
                 setBackgroundColor(AndroidColor.TRANSPARENT)
                 drawOrder = arrayOf(
