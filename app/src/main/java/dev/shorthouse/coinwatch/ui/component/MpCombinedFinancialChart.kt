@@ -10,7 +10,9 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
@@ -32,11 +34,14 @@ import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.data.ScatterData
 import com.github.mikephil.charting.data.ScatterDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
+import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
 import com.github.mikephil.charting.interfaces.datasets.IScatterDataSet
 import com.github.mikephil.charting.listener.ChartTouchListener
 import com.github.mikephil.charting.listener.OnChartGestureListener
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import com.github.mikephil.charting.renderer.scatter.IShapeRenderer
+import com.github.mikephil.charting.utils.ColorTemplate
 import com.github.mikephil.charting.utils.ViewPortHandler
 import dev.shorthouse.coinwatch.model.CandleEntry
 import dev.shorthouse.coinwatch.model.CipherBPoint
@@ -53,6 +58,25 @@ import java.util.Locale
 private class ChartViewportState {
     var isInitialized: Boolean = false
     var prevCandleCount: Int = 0
+    var prevHighlightedIndex: Int? = null
+}
+
+/**
+ * Safely highlights an entry inside a CombinedChart by resolving the target dataset's
+ * index in CombinedData.allData (MPAndroidChart throws ArrayIndexOutOfBoundsException if dataIndex == -1).
+ */
+private fun highlightCombinedEntry(
+    chart: CombinedChart,
+    dataIndex: Int,
+    xIndex: Int
+) {
+    if (dataIndex < 0) return
+    runCatching {
+        val highlight = Highlight(xIndex.toFloat(), 0, -1).apply {
+            this.dataIndex = dataIndex
+        }
+        chart.highlightValue(highlight, false)
+    }
 }
 
 private fun formatVolumeValue(value: Float): String {
@@ -71,12 +95,15 @@ fun MpCombinedFinancialChart(
     candles: ImmutableList<CandleEntry>,
     emaPoints: List<EmaPoint> = emptyList(),
     cipherPoints: List<CipherBPoint> = emptyList(),
+    selectedCandleIndex: Int? = null,
+    onCandleSelected: (Int?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val gridColor = MaterialTheme.colorScheme.outlineVariant.toArgb()
     val greenColor = PositiveGreen.toArgb()
     val redColor = NegativeRed.toArgb()
+    val selectedBlueColor = AndroidColor.parseColor("#448AFF")
     val volumeGreenColor = PositiveGreen.copy(alpha = 0.75f).toArgb()
     val volumeRedColor = NegativeRed.copy(alpha = 0.75f).toArgb()
 
@@ -91,10 +118,24 @@ fun MpCombinedFinancialChart(
     val scatterOrange = AndroidColor.parseColor("#FF9100")
 
     val viewportState = remember { ChartViewportState() }
+    val currentOnCandleSelected by rememberUpdatedState(onCandleSelected)
 
     AndroidView(
         modifier = modifier,
         factory = { context ->
+            val valueSelectedListener = object : OnChartValueSelectedListener {
+                override fun onValueSelected(e: Entry?, h: Highlight?) {
+                    val idx = e?.x?.toInt()
+                    if (idx != null) {
+                        currentOnCandleSelected(idx)
+                    }
+                }
+
+                override fun onNothingSelected() {
+                    currentOnCandleSelected(null)
+                }
+            }
+
             val mainChart = EmaCombinedChart(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -110,6 +151,8 @@ fun MpCombinedFinancialChart(
                 isAutoScaleMinMaxEnabled = true
                 setDrawGridBackground(false)
                 setBackgroundColor(AndroidColor.TRANSPARENT)
+                isFocusable = false
+                isFocusableInTouchMode = false
                 drawOrder = arrayOf(
                     CombinedChart.DrawOrder.CANDLE,
                     CombinedChart.DrawOrder.LINE
@@ -161,6 +204,8 @@ fun MpCombinedFinancialChart(
                 isAutoScaleMinMaxEnabled = true
                 setDrawGridBackground(false)
                 setBackgroundColor(AndroidColor.TRANSPARENT)
+                isFocusable = false
+                isFocusableInTouchMode = false
                 minOffset = 0f
                 setExtraOffsets(0f, 0f, 0f, 0f)
 
@@ -213,6 +258,8 @@ fun MpCombinedFinancialChart(
                 setPinchZoom(true)
                 setDrawGridBackground(false)
                 setBackgroundColor(AndroidColor.TRANSPARENT)
+                isFocusable = false
+                isFocusableInTouchMode = false
                 minOffset = 0f
                 setExtraOffsets(0f, 0f, 0f, 0f)
 
@@ -276,6 +323,7 @@ fun MpCombinedFinancialChart(
             }
 
             allCharts.forEach { chart ->
+                chart.setOnChartValueSelectedListener(valueSelectedListener)
                 chart.onChartGestureListener = object : OnChartGestureListener {
                     override fun onChartGestureStart(me: MotionEvent?, lastGesture: ChartTouchListener.ChartGesture?) {}
                     override fun onChartGestureEnd(me: MotionEvent?, lastGesture: ChartTouchListener.ChartGesture?) {}
@@ -311,6 +359,7 @@ fun MpCombinedFinancialChart(
             if (candles.isEmpty()) {
                 viewportState.isInitialized = false
                 viewportState.prevCandleCount = 0
+                viewportState.prevHighlightedIndex = null
                 mainChart.clear()
                 volumeChart.clear()
                 subChart.clear()
@@ -325,6 +374,8 @@ fun MpCombinedFinancialChart(
             val wasFollowingLatest = !viewportState.isInitialized ||
                 (prevMaxX >= 0f && mainChart.highestVisibleX >= prevMaxX - 1.5f)
             val prevLowestVisibleX = mainChart.lowestVisibleX
+
+            val safeSelectedIndex = selectedCandleIndex?.coerceIn(0, candles.lastIndex)
 
             // Align X-axis domain across all three charts so bars and candles match pixel-for-pixel
             val xAxisMin = -0.5f
@@ -347,19 +398,29 @@ fun MpCombinedFinancialChart(
                 )
             }
 
+            val candleColors = candles.mapIndexed { index, candle ->
+                when {
+                    index == safeSelectedIndex -> selectedBlueColor
+                    candle.close >= candle.open -> greenColor
+                    else -> redColor
+                }
+            }
+
             val candleDataSet = CandleDataSet(candleEntries, "KLine").apply {
-                color = AndroidColor.GRAY
+                colors = candleColors
+                // MPAndroidChart CandleDataSet defaults these to COLOR_SKIP (1122868), whereas
+                // CandleStickChartRenderer only falls back to colors[j] when they equal COLOR_NONE (1122867).
+                increasingColor = ColorTemplate.COLOR_NONE
+                decreasingColor = ColorTemplate.COLOR_NONE
+                neutralColor = ColorTemplate.COLOR_NONE
                 setShadowColor(AndroidColor.GRAY)
                 shadowWidth = 1f
-                setDecreasingColor(redColor)
                 setDecreasingPaintStyle(Paint.Style.FILL)
-                setIncreasingColor(greenColor)
                 setIncreasingPaintStyle(Paint.Style.FILL)
-                setNeutralColor(greenColor)
                 setDrawValues(false)
                 setDrawIcons(false)
-                highlightLineWidth = 1f
-                highLightColor = textColor
+                setDrawHorizontalHighlightIndicator(false)
+                setDrawVerticalHighlightIndicator(false)
             }
             mainCombinedData.setData(CandleData(candleDataSet))
 
@@ -381,6 +442,7 @@ fun MpCombinedFinancialChart(
                         lineWidth = 1.5f
                         setDrawCircles(false)
                         setDrawValues(false)
+                        isHighlightEnabled = false
                         mode = LineDataSet.Mode.CUBIC_BEZIER
                     })
                 }
@@ -390,6 +452,7 @@ fun MpCombinedFinancialChart(
                         lineWidth = 1.5f
                         setDrawCircles(false)
                         setDrawValues(false)
+                        isHighlightEnabled = false
                         mode = LineDataSet.Mode.CUBIC_BEZIER
                     })
                 }
@@ -399,6 +462,7 @@ fun MpCombinedFinancialChart(
                         lineWidth = 1.5f
                         setDrawCircles(false)
                         setDrawValues(false)
+                        isHighlightEnabled = false
                         mode = LineDataSet.Mode.CUBIC_BEZIER
                     })
                 }
@@ -428,7 +492,8 @@ fun MpCombinedFinancialChart(
             val volumeDataSet = BarDataSet(volumeEntries, "Volume").apply {
                 colors = volumeColors
                 setDrawValues(false)
-                highLightColor = textColor
+                highLightColor = selectedBlueColor
+                highLightAlpha = 255
             }
             val volumeBarData = BarData(volumeDataSet).apply {
                 barWidth = 0.7f
@@ -453,6 +518,8 @@ fun MpCombinedFinancialChart(
                     setDrawFilled(true)
                     fillColor = wt1Color
                     fillAlpha = 60
+                    setDrawHorizontalHighlightIndicator(false)
+                    setDrawVerticalHighlightIndicator(false)
                     mode = LineDataSet.Mode.CUBIC_BEZIER
                 }
 
@@ -464,6 +531,7 @@ fun MpCombinedFinancialChart(
                     setDrawFilled(true)
                     fillColor = wt2Color
                     fillAlpha = 40
+                    isHighlightEnabled = false
                     mode = LineDataSet.Mode.CUBIC_BEZIER
                 }
 
@@ -495,6 +563,7 @@ fun MpCombinedFinancialChart(
                         setScatterShape(ScatterChart.ScatterShape.CIRCLE)
                         scatterShapeSize = 8f
                         setDrawValues(false)
+                        isHighlightEnabled = false
                     })
                 }
 
@@ -504,6 +573,7 @@ fun MpCombinedFinancialChart(
                         setScatterShape(ScatterChart.ScatterShape.CIRCLE)
                         scatterShapeSize = 8f
                         setDrawValues(false)
+                        isHighlightEnabled = false
                     })
                 }
 
@@ -513,6 +583,7 @@ fun MpCombinedFinancialChart(
                         setScatterShape(ScatterChart.ScatterShape.TRIANGLE)
                         scatterShapeSize = 12f
                         setDrawValues(false)
+                        isHighlightEnabled = false
                     })
                 }
 
@@ -522,6 +593,7 @@ fun MpCombinedFinancialChart(
                         setShapeRenderer(InvertedTriangleShapeRenderer())
                         scatterShapeSize = 12f
                         setDrawValues(false)
+                        isHighlightEnabled = false
                     })
                 }
 
@@ -531,6 +603,7 @@ fun MpCombinedFinancialChart(
                         setScatterShape(ScatterChart.ScatterShape.CIRCLE)
                         scatterShapeSize = 15f
                         setDrawValues(false)
+                        isHighlightEnabled = false
                     })
                 }
 
@@ -608,6 +681,38 @@ fun MpCombinedFinancialChart(
             }
 
             viewportState.prevCandleCount = candles.size
+
+            // --- 6. Highlight selected candle & auto-scroll if remote cursor moved off-screen ---
+            if (safeSelectedIndex != null) {
+                if (!candleCountChanged &&
+                    viewportState.prevHighlightedIndex != null &&
+                    safeSelectedIndex != viewportState.prevHighlightedIndex
+                ) {
+                    val xVal = safeSelectedIndex.toFloat()
+                    val lowestX = mainChart.lowestVisibleX
+                    val highestX = mainChart.highestVisibleX
+                    val visibleSpan = (highestX - lowestX).coerceAtLeast(1f)
+
+                    if (xVal < lowestX + 0.5f) {
+                        val targetX = (xVal - 0.5f).coerceAtLeast(xAxisMin)
+                        allCharts.forEach { it.moveViewToX(targetX) }
+                    } else if (xVal > highestX - 0.5f) {
+                        val targetX = (xVal - visibleSpan + 0.5f).coerceAtLeast(xAxisMin)
+                        allCharts.forEach { it.moveViewToX(targetX) }
+                    }
+                }
+
+                val mainCandleIdx = mainCombinedData.candleData?.let { mainCombinedData.allData.indexOf(it) } ?: -1
+                val volumeBarIdx = volumeCombinedData.barData?.let { volumeCombinedData.allData.indexOf(it) } ?: -1
+                val subLineIdx = subCombinedData.lineData?.let { subCombinedData.allData.indexOf(it) } ?: -1
+
+                highlightCombinedEntry(mainChart, mainCandleIdx, safeSelectedIndex)
+                highlightCombinedEntry(volumeChart, volumeBarIdx, safeSelectedIndex)
+                highlightCombinedEntry(subChart, subLineIdx, safeSelectedIndex)
+            } else {
+                allCharts.forEach { it.highlightValue(null, false) }
+            }
+            viewportState.prevHighlightedIndex = safeSelectedIndex
 
             mainChart.invalidate()
             volumeChart.invalidate()
