@@ -119,6 +119,7 @@ fun CoinChartCard(
     val cipherPoints = remember(candles) { IndicatorCalculator.calculateCipherB(candles) }
 
     val chartFocusRequester = remember { FocusRequester() }
+    val resetButtonFocusRequester = remember { FocusRequester() }
     val periodFocusRequesters = remember {
         ChartPeriod.entries.associateWith { FocusRequester() }
     }
@@ -198,7 +199,11 @@ fun CoinChartCard(
                     focusRequesters = periodFocusRequesters,
                     onMoveFocusDown = {
                         if (candles.isNotEmpty()) {
-                            chartFocusRequester.requestFocus()
+                            if (isManualSelection) {
+                                resetButtonFocusRequester.requestFocus()
+                            } else {
+                                chartFocusRequester.requestFocus()
+                            }
                         }
                     },
                     modifier = Modifier.weight(1f)
@@ -213,7 +218,13 @@ fun CoinChartCard(
                     emaPoint = emaPoints.getOrNull(effectiveSelectedIndex),
                     cipherPoint = cipherPoints.getOrNull(effectiveSelectedIndex),
                     isManualSelection = isManualSelection,
-                    onResetToLatest = { isManualSelection = false },
+                    resetButtonFocusRequester = resetButtonFocusRequester,
+                    onMoveResetFocusUp = { periodFocusRequesters[chartPeriod]?.requestFocus() },
+                    onMoveResetFocusDown = { chartFocusRequester.requestFocus() },
+                    onResetToLatest = {
+                        chartFocusRequester.requestFocus()
+                        isManualSelection = false
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
@@ -257,7 +268,11 @@ fun CoinChartCard(
                                     true
                                 }
                                 Key.DirectionUp -> {
-                                    periodFocusRequesters[chartPeriod]?.requestFocus()
+                                    if (isManualSelection) {
+                                        resetButtonFocusRequester.requestFocus()
+                                    } else {
+                                        periodFocusRequesters[chartPeriod]?.requestFocus()
+                                    }
                                     true
                                 }
                                 else -> false
@@ -309,6 +324,9 @@ private fun CandleInfoBar(
     emaPoint: EmaPoint?,
     cipherPoint: CipherBPoint?,
     isManualSelection: Boolean,
+    resetButtonFocusRequester: FocusRequester,
+    onMoveResetFocusUp: () -> Unit,
+    onMoveResetFocusDown: () -> Unit,
     onResetToLatest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -374,16 +392,48 @@ private fun CandleInfoBar(
                 }
 
                 if (isManualSelection) {
+                    var isResetFocused by remember { mutableStateOf(false) }
                     Spacer(Modifier.width(8.dp))
                     Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
+                        color = if (isResetFocused) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.primaryContainer
+                        },
+                        border = if (isResetFocused) {
+                            BorderStroke(2.dp, Color(0xFF448AFF))
+                        } else {
+                            null
+                        },
                         shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.clickable(onClick = onResetToLatest)
+                        modifier = Modifier
+                            .focusRequester(resetButtonFocusRequester)
+                            .onFocusChanged { isResetFocused = it.isFocused }
+                            .onPreviewKeyEvent { event ->
+                                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                when (event.key) {
+                                    Key.DirectionUp -> {
+                                        onMoveResetFocusUp()
+                                        true
+                                    }
+                                    Key.DirectionDown -> {
+                                        onMoveResetFocusDown()
+                                        true
+                                    }
+                                    Key.DirectionLeft, Key.DirectionRight -> true
+                                    else -> false
+                                }
+                            }
+                            .clickable(onClick = onResetToLatest)
                     ) {
                         Text(
                             text = "回最新",
                             style = metaTextStyle.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = if (isResetFocused) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            },
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
                         )
                     }
