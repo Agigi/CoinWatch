@@ -104,7 +104,7 @@ fun CoinChartCard(
                     cipherPoints = cipherPoints,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(270.dp)
+                        .height(330.dp)
                         .padding(horizontal = 12.dp)
                 )
             } else {

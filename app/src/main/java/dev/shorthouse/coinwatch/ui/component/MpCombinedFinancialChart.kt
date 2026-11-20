@@ -18,6 +18,9 @@ import com.github.mikephil.charting.charts.ScatterChart
 import com.github.mikephil.charting.components.LimitLine
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.components.YAxis
+import com.github.mikephil.charting.data.BarData
+import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.data.CandleData
 import com.github.mikephil.charting.data.CandleDataSet
 import com.github.mikephil.charting.data.CandleEntry as MpCandleEntry
@@ -40,9 +43,22 @@ import dev.shorthouse.coinwatch.model.EmaPoint
 import dev.shorthouse.coinwatch.ui.theme.NegativeRed
 import dev.shorthouse.coinwatch.ui.theme.PositiveGreen
 import kotlinx.collections.immutable.ImmutableList
+import java.math.BigDecimal
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private fun formatVolumeValue(value: Float): String {
+    return when {
+        value >= 1_000_000_000f -> String.format(Locale.US, "%.1fB", value / 1_000_000_000f)
+        value >= 1_000_000f -> String.format(Locale.US, "%.1fM", value / 1_000_000f)
+        value >= 1_000f -> String.format(Locale.US, "%.1fK", value / 1_000f)
+        value >= 10f -> String.format(Locale.US, "%.0f", value)
+        value > 0f -> String.format(Locale.US, "%.1f", value)
+        else -> "0"
+    }
+}
 
 @Composable
 fun MpCombinedFinancialChart(
@@ -55,6 +71,8 @@ fun MpCombinedFinancialChart(
     val gridColor = MaterialTheme.colorScheme.outlineVariant.toArgb()
     val greenColor = PositiveGreen.toArgb()
     val redColor = NegativeRed.toArgb()
+    val volumeGreenColor = PositiveGreen.copy(alpha = 0.75f).toArgb()
+    val volumeRedColor = NegativeRed.copy(alpha = 0.75f).toArgb()
 
     val shortEmaColor = AndroidColor.parseColor("#FFA726")  // 橘色 EMA 21
     val mediumEmaColor = AndroidColor.parseColor("#2196F3") // 藍色 EMA 55
@@ -118,6 +136,59 @@ fun MpCombinedFinancialChart(
             }
 
             val spacingPx = (2 * context.resources.displayMetrics.density).toInt()
+            val volumeChart = CombinedChart(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    0.24f
+                ).apply {
+                    topMargin = spacingPx
+                }
+                description.isEnabled = false
+                legend.isEnabled = false
+                setTouchEnabled(true)
+                isDragEnabled = true
+                setScaleEnabled(true)
+                setPinchZoom(true)
+                isAutoScaleMinMaxEnabled = true
+                setDrawGridBackground(false)
+                setBackgroundColor(AndroidColor.TRANSPARENT)
+                minOffset = 0f
+                setExtraOffsets(0f, 0f, 0f, 0f)
+
+                drawOrder = arrayOf(
+                    CombinedChart.DrawOrder.BAR
+                )
+
+                xAxis.apply {
+                    position = XAxis.XAxisPosition.BOTTOM
+                    setDrawGridLines(true)
+                    setGridColor(gridColor)
+                    setDrawLabels(false)
+                    granularity = 1f
+                    isGranularityEnabled = true
+                }
+
+                axisLeft.apply {
+                    setDrawGridLines(false)
+                    setTextColor(textColor)
+                    setLabelCount(3, false)
+                    axisMinimum = 0f
+                    spaceTop = 15f
+                    spaceBottom = 0f
+                    setPosition(YAxis.YAxisLabelPosition.OUTSIDE_CHART)
+                    minWidth = 55f
+                    maxWidth = 55f
+                    valueFormatter = object : ValueFormatter() {
+                        override fun getFormattedValue(value: Float): String {
+                            return formatVolumeValue(value)
+                        }
+                    }
+                }
+
+                axisRight.isEnabled = false
+            }
+
             val subChart = CombinedChart(context).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -180,68 +251,71 @@ fun MpCombinedFinancialChart(
                 axisRight.isEnabled = false
             }
 
-            // Sync matrix between mainChart and subChart
+            // Sync matrix across mainChart, volumeChart, and subChart
             var isSyncing = false
-            fun sync(src: CombinedChart, dst: CombinedChart) {
+            val allCharts = listOf(mainChart, volumeChart, subChart)
+            fun syncFrom(src: CombinedChart) {
                 if (!isSyncing) {
                     isSyncing = true
-                    dst.viewPortHandler.refresh(src.viewPortHandler.matrixTouch, dst, true)
+                    val matrix = src.viewPortHandler.matrixTouch
+                    allCharts.forEach { target ->
+                        if (target !== src) {
+                            target.viewPortHandler.refresh(matrix, target, true)
+                        }
+                    }
                     isSyncing = false
                 }
             }
 
-            mainChart.onChartGestureListener = object : OnChartGestureListener {
-                override fun onChartGestureStart(me: MotionEvent?, lastGesture: ChartTouchListener.ChartGesture?) {}
-                override fun onChartGestureEnd(me: MotionEvent?, lastGesture: ChartTouchListener.ChartGesture?) {}
-                override fun onChartLongPressed(me: MotionEvent?) {}
-                override fun onChartDoubleTapped(me: MotionEvent?) {}
-                override fun onChartSingleTapped(me: MotionEvent?) {}
-                override fun onChartFling(me1: MotionEvent?, me2: MotionEvent?, vX: Float, vY: Float) {}
+            allCharts.forEach { chart ->
+                chart.onChartGestureListener = object : OnChartGestureListener {
+                    override fun onChartGestureStart(me: MotionEvent?, lastGesture: ChartTouchListener.ChartGesture?) {}
+                    override fun onChartGestureEnd(me: MotionEvent?, lastGesture: ChartTouchListener.ChartGesture?) {}
+                    override fun onChartLongPressed(me: MotionEvent?) {}
+                    override fun onChartDoubleTapped(me: MotionEvent?) {}
+                    override fun onChartSingleTapped(me: MotionEvent?) {}
+                    override fun onChartFling(me1: MotionEvent?, me2: MotionEvent?, vX: Float, vY: Float) {}
 
-                override fun onChartScale(me: MotionEvent?, scaleX: Float, scaleY: Float) {
-                    sync(mainChart, subChart)
-                }
+                    override fun onChartScale(me: MotionEvent?, scaleX: Float, scaleY: Float) {
+                        syncFrom(chart)
+                    }
 
-                override fun onChartTranslate(me: MotionEvent?, dX: Float, dY: Float) {
-                    sync(mainChart, subChart)
-                }
-            }
-
-            subChart.onChartGestureListener = object : OnChartGestureListener {
-                override fun onChartGestureStart(me: MotionEvent?, lastGesture: ChartTouchListener.ChartGesture?) {}
-                override fun onChartGestureEnd(me: MotionEvent?, lastGesture: ChartTouchListener.ChartGesture?) {}
-                override fun onChartLongPressed(me: MotionEvent?) {}
-                override fun onChartDoubleTapped(me: MotionEvent?) {}
-                override fun onChartSingleTapped(me: MotionEvent?) {}
-                override fun onChartFling(me1: MotionEvent?, me2: MotionEvent?, vX: Float, vY: Float) {}
-
-                override fun onChartScale(me: MotionEvent?, scaleX: Float, scaleY: Float) {
-                    sync(subChart, mainChart)
-                }
-
-                override fun onChartTranslate(me: MotionEvent?, dX: Float, dY: Float) {
-                    sync(subChart, mainChart)
+                    override fun onChartTranslate(me: MotionEvent?, dX: Float, dY: Float) {
+                        syncFrom(chart)
+                    }
                 }
             }
 
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(mainChart)
+                addView(volumeChart)
                 addView(subChart)
             }
         },
         update = { container ->
             val mainChart = container.getChildAt(0) as EmaCombinedChart
-            val subChart = container.getChildAt(1) as CombinedChart
+            val volumeChart = container.getChildAt(1) as CombinedChart
+            val subChart = container.getChildAt(2) as CombinedChart
 
             mainChart.emaPoints = emaPoints
 
             if (candles.isEmpty()) {
                 mainChart.clear()
+                volumeChart.clear()
                 subChart.clear()
                 mainChart.invalidate()
+                volumeChart.invalidate()
                 subChart.invalidate()
                 return@AndroidView
+            }
+
+            // Align X-axis domain across all three charts so bars and candles match pixel-for-pixel
+            val xAxisMin = -0.5f
+            val xAxisMax = (candles.size - 1) + 0.5f
+            listOf(mainChart, volumeChart, subChart).forEach { chart ->
+                chart.xAxis.axisMinimum = xAxisMin
+                chart.xAxis.axisMaximum = xAxisMax
             }
 
             // --- 1. Populate Main Chart (K-Line + EMA3) ---
@@ -320,7 +394,35 @@ fun MpCombinedFinancialChart(
             mainChart.data = mainCombinedData
             mainChart.notifyDataSetChanged()
 
-            // --- 2. Populate Sub Chart (Cipher B) ---
+            // --- 2. Populate Volume Chart ---
+            val volumeCombinedData = CombinedData()
+            val volumeEntries = candles.mapIndexed { index, candle ->
+                BarEntry(index.toFloat(), candle.volume.toFloat().coerceAtLeast(0f))
+            }
+            val volumeColors = candles.map { candle ->
+                if (candle.close >= candle.open) volumeGreenColor else volumeRedColor
+            }
+            val hasPositiveVolume = candles.any { it.volume > BigDecimal.ZERO }
+            if (hasPositiveVolume) {
+                volumeChart.axisLeft.resetAxisMaximum()
+            } else {
+                volumeChart.axisLeft.axisMaximum = 1f
+            }
+
+            val volumeDataSet = BarDataSet(volumeEntries, "Volume").apply {
+                colors = volumeColors
+                setDrawValues(false)
+                highLightColor = textColor
+            }
+            val volumeBarData = BarData(volumeDataSet).apply {
+                barWidth = 0.7f
+            }
+            volumeCombinedData.setData(volumeBarData)
+
+            volumeChart.data = volumeCombinedData
+            volumeChart.notifyDataSetChanged()
+
+            // --- 3. Populate Sub Chart (Cipher B) ---
             val subCombinedData = CombinedData()
 
             if (cipherPoints.size == candles.size) {
@@ -424,7 +526,7 @@ fun MpCombinedFinancialChart(
             subChart.data = subCombinedData
             subChart.notifyDataSetChanged()
 
-            // --- 3. Format Date XAxis on Sub Chart ---
+            // --- 4. Format Date XAxis on Sub Chart ---
             val isLongSpan = if (candles.size >= 2) {
                 val spanSec = candles.last().timestamp - candles.first().timestamp
                 val spanMillis = if (spanSec < 10_000_000_000L) spanSec * 1000L else spanSec
@@ -448,19 +550,21 @@ fun MpCombinedFinancialChart(
                 }
             }
 
-            // --- 4. Viewport Sync & Focus to latest 300 candles ---
+            // --- 5. Viewport Sync & Focus to latest 300 candles ---
             if (candles.size > 300) {
-                mainChart.setVisibleXRangeMaximum(300f)
-                subChart.setVisibleXRangeMaximum(300f)
                 val lastX = (candles.size - 1).toFloat()
-                mainChart.moveViewToX(lastX)
-                subChart.moveViewToX(lastX)
+                listOf(mainChart, volumeChart, subChart).forEach { chart ->
+                    chart.setVisibleXRangeMaximum(300f)
+                    chart.moveViewToX(lastX)
+                }
             } else {
-                mainChart.fitScreen()
-                subChart.fitScreen()
+                listOf(mainChart, volumeChart, subChart).forEach { chart ->
+                    chart.fitScreen()
+                }
             }
 
             mainChart.invalidate()
+            volumeChart.invalidate()
             subChart.invalidate()
         }
     )

@@ -388,7 +388,12 @@ class TradingViewWssManager() {
                 val high = BigDecimal(v.optDouble(2).toString())
                 val low = BigDecimal(v.optDouble(3).toString())
                 val close = BigDecimal(v.optDouble(4).toString())
-                val volume = if (v.length() >= 6) BigDecimal(v.optDouble(5).toString()) else BigDecimal.ZERO
+                val rawVol = if (v.length() >= 6) v.optDouble(5, 0.0) else 0.0
+                val volume = if (rawVol.isNaN() || rawVol.isInfinite()) {
+                    BigDecimal.ZERO
+                } else {
+                    BigDecimal(rawVol.toString())
+                }
 
                 val candle = CandleEntry(open, high, low, close, volume, time)
 
