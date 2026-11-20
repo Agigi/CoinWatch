@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
@@ -207,10 +207,10 @@ fun SearchContent(
 
             else -> {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(
+                    itemsIndexed(
                         items = searchResults,
-                        key = { coin -> coin.id }
-                    ) { item ->
+                        key = { index, coin -> "${coin.id}#$index" }
+                    ) { _, item ->
                         SearchListItem(
                             searchCoin = item,
                             onCoinClick = onCoinClick

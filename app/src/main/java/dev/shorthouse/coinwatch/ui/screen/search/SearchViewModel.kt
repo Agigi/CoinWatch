@@ -62,17 +62,19 @@ class SearchViewModel(
                         results = (localMatches + listOf(directMatch)).distinctBy { it.fullName }
                     }
 
-                    val searchResults = results.map {
-                        SearchCoin(
-                            id = it.fullName,
-                            name = it.symbol,
-                            symbol = it.description,
-                            imageUrl = it.logoUrl,
-                            exchange = it.exchange,
-                            exchangeLogoUrl = it.exchangeLogoUrl,
-                            typespecs = it.typespecs
-                        )
-                    }.toPersistentList()
+                    val searchResults = results
+                        .distinctBy { it.fullName }
+                        .map {
+                            SearchCoin(
+                                id = it.fullName,
+                                name = it.symbol,
+                                symbol = it.description,
+                                imageUrl = it.logoUrl,
+                                exchange = it.exchange,
+                                exchangeLogoUrl = it.exchangeLogoUrl,
+                                typespecs = it.typespecs
+                            )
+                        }.toPersistentList()
 
                     _uiState.update {
                         it.copy(
