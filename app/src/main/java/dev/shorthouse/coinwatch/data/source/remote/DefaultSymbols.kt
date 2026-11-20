@@ -10,6 +10,7 @@ object DefaultSymbols {
         "BINANCE:AVAXUSDT",
         "BINANCE:AAVEUSDT",
         "BINANCE:LINKUSDT",
+        "BINANCE:PENGUUSDT",
         "BINANCE:ONEUSDT",
         "BINANCE:LTCUSDT",
         "BINANCE:AXSUSDT",
@@ -42,7 +43,6 @@ object DefaultSymbols {
         "BINANCE:BONKUSDT",
         "BINANCE:FLOKIUSDT",
         "BINANCE:TRUMPUSDT",
-        "BINANCE:PENGUUSDT",
         "BINANCE:LSKUSDT",
         "BINANCE:PNUTUSDT"
     )
