@@ -22,19 +22,17 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,8 +78,6 @@ fun DetailsScreen(
     modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState(),
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-
     Scaffold(
         topBar = {
             when (uiState) {
@@ -90,8 +86,7 @@ fun DetailsScreen(
                         coinDetails = uiState.coinDetails,
                         isCoinFavourite = uiState.isCoinFavourite,
                         onNavigateUp = onNavigateUp,
-                        onClickFavouriteCoin = onClickFavouriteCoin,
-                        scrollBehavior = scrollBehavior
+                        onClickFavouriteCoin = onClickFavouriteCoin
                     )
                 }
 
@@ -104,7 +99,6 @@ fun DetailsScreen(
         },
         contentWindowInsets = AppWindowInsets.horizontalAndBottomContent,
         modifier = modifier
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
     ) { scaffoldPadding ->
         when (uiState) {
             is DetailsUiState.Success -> {
@@ -139,10 +133,9 @@ fun DetailsTopBar(
     isCoinFavourite: Boolean,
     onNavigateUp: () -> Unit,
     onClickFavouriteCoin: () -> Unit,
-    scrollBehavior: TopAppBarScrollBehavior,
     modifier: Modifier = Modifier,
 ) {
-    LargeTopAppBar(
+    TopAppBar(
         navigationIcon = {
             IconButton(onClick = onNavigateUp) {
                 Icon(
@@ -236,11 +229,10 @@ fun DetailsTopBar(
                 )
             }
         },
-        colors = TopAppBarDefaults.largeTopAppBarColors(
+        colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.background,
             scrolledContainerColor = MaterialTheme.colorScheme.background
         ),
-        scrollBehavior = scrollBehavior,
         modifier = modifier
     )
 }

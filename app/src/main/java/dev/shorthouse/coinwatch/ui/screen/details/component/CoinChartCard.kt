@@ -42,7 +42,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.shorthouse.coinwatch.R
@@ -120,6 +119,9 @@ fun CoinChartCard(
     val cipherPoints = remember(candles) { IndicatorCalculator.calculateCipherB(candles) }
 
     val chartFocusRequester = remember { FocusRequester() }
+    val periodFocusRequesters = remember {
+        ChartPeriod.entries.associateWith { FocusRequester() }
+    }
     var isChartFocused by remember { mutableStateOf(false) }
 
     var isManualSelection by remember(chartPeriod) { mutableStateOf(false) }
@@ -147,13 +149,7 @@ fun CoinChartCard(
         shape = MaterialTheme.shapes.medium,
         modifier = modifier
     ) {
-        Column(modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) {
-            val chartSubtitle = if (exchange.isNotBlank()) {
-                "$exchange • K-Line (${chartPeriod.label})"
-            } else {
-                "K-Line (${chartPeriod.label})"
-            }
-
+        Column(modifier = Modifier.padding(top = 12.dp, bottom = 10.dp)) {
             val (badgeText, badgeBg, badgeFg) = when (emaAlignment) {
                 EmaAlignmentState.BULLISH -> Triple("EMA多頭", PositiveGreen, Color.White)
                 EmaAlignmentState.BEARISH -> Triple("EMA空頭", NegativeRed, Color.White)
@@ -162,46 +158,51 @@ fun CoinChartCard(
             }
 
             Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
             ) {
-                Text(
-                    text = currentPrice.formattedAmount,
-                    style = MaterialTheme.typography.headlineSmall,
-                    maxLines = 1,
-                    modifier = Modifier.alignByBaseline()
-                )
+                Row {
+                    Text(
+                        text = currentPrice.formattedAmount,
+                        style = MaterialTheme.typography.headlineSmall,
+                        maxLines = 1,
+                        modifier = Modifier.alignByBaseline()
+                    )
 
-                Spacer(Modifier.width(16.dp))
-
-                Text(
-                    text = chartSubtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .alignByBaseline()
-                )
-
-                if (badgeText.isNotEmpty()) {
-                    Spacer(Modifier.width(10.dp))
-                    val badgeBaselineOffsetPx = with(LocalDensity.current) { 4.dp.roundToPx() }
-                    Surface(
-                        color = badgeBg,
-                        shape = MaterialTheme.shapes.extraSmall,
-                        modifier = Modifier.alignBy { it.measuredHeight - badgeBaselineOffsetPx }
-                    ) {
-                        Text(
-                            text = badgeText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = badgeFg,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                    if (badgeText.isNotEmpty()) {
+                        Spacer(Modifier.width(12.dp))
+                        val badgeBaselineOffsetPx = with(LocalDensity.current) { 4.dp.roundToPx() }
+                        Surface(
+                            color = badgeBg,
+                            shape = MaterialTheme.shapes.extraSmall,
+                            modifier = Modifier.alignBy { it.measuredHeight - badgeBaselineOffsetPx }
+                        ) {
+                            Text(
+                                text = badgeText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = badgeFg,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
+
+                Spacer(Modifier.width(48.dp))
+
+                ChartPeriodSelector(
+                    selectedChartPeriod = chartPeriod,
+                    onChartPeriodSelected = onClickChartPeriod,
+                    requestInitialFocus = true,
+                    focusRequesters = periodFocusRequesters,
+                    onMoveFocusDown = {
+                        if (candles.isNotEmpty()) {
+                            chartFocusRequester.requestFocus()
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             Spacer(Modifier.height(5.dp))
@@ -255,6 +256,10 @@ fun CoinChartCard(
                                     isManualSelection = false
                                     true
                                 }
+                                Key.DirectionUp -> {
+                                    periodFocusRequesters[chartPeriod]?.requestFocus()
+                                    true
+                                }
                                 else -> false
                             }
                         }
@@ -293,14 +298,6 @@ fun CoinChartCard(
                     )
                 }
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            ChartPeriodSelector(
-                selectedChartPeriod = chartPeriod,
-                onChartPeriodSelected = onClickChartPeriod,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
         }
     }
 }
