@@ -213,7 +213,7 @@ class TradingViewWssManager() {
             sendJson("""{"m":"chart_create_session","p":["$chartSession",""]}""")
             sendJson("""{"m":"switch_timezone","p":["$chartSession","Etc/UTC"]}""")
             sendJson("""{"m":"resolve_symbol","p":["$chartSession","$symbolId","={\"session\":\"regular\",\"symbol\":\"$symbol\"}"]}""")
-            sendJson("""{"m":"create_series","p":["$chartSession","s1","s1","$symbolId","$tvResolution",800,""]}""")
+            sendJson("""{"m":"create_series","p":["$chartSession","s1","s1","$symbolId","$tvResolution",2000,""]}""")
         }
     }
 

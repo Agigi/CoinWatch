@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
@@ -49,6 +50,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+private class ChartViewportState {
+    var isInitialized: Boolean = false
+    var prevCandleCount: Int = 0
+}
+
 private fun formatVolumeValue(value: Float): String {
     return when {
         value >= 1_000_000_000f -> String.format(Locale.US, "%.1fB", value / 1_000_000_000f)
@@ -83,6 +89,8 @@ fun MpCombinedFinancialChart(
     val scatterGreen = AndroidColor.parseColor("#00E676")
     val scatterRed = AndroidColor.parseColor("#FF1744")
     val scatterOrange = AndroidColor.parseColor("#FF9100")
+
+    val viewportState = remember { ChartViewportState() }
 
     AndroidView(
         modifier = modifier,
@@ -301,6 +309,8 @@ fun MpCombinedFinancialChart(
             mainChart.emaPoints = emaPoints
 
             if (candles.isEmpty()) {
+                viewportState.isInitialized = false
+                viewportState.prevCandleCount = 0
                 mainChart.clear()
                 volumeChart.clear()
                 subChart.clear()
@@ -309,6 +319,12 @@ fun MpCombinedFinancialChart(
                 subChart.invalidate()
                 return@AndroidView
             }
+
+            // Capture current viewport position before updating data so historical scrolling isn't reset
+            val prevMaxX = mainChart.data?.xMax ?: -1f
+            val wasFollowingLatest = !viewportState.isInitialized ||
+                (prevMaxX >= 0f && mainChart.highestVisibleX >= prevMaxX - 1.5f)
+            val prevLowestVisibleX = mainChart.lowestVisibleX
 
             // Align X-axis domain across all three charts so bars and candles match pixel-for-pixel
             val xAxisMin = -0.5f
@@ -550,18 +566,48 @@ fun MpCombinedFinancialChart(
                 }
             }
 
-            // --- 5. Viewport Sync & Focus to latest 300 candles ---
-            if (candles.size > 300) {
-                val lastX = (candles.size - 1).toFloat()
-                listOf(mainChart, volumeChart, subChart).forEach { chart ->
-                    chart.setVisibleXRangeMaximum(300f)
-                    chart.moveViewToX(lastX)
+            // --- 5. Viewport Sync & Focus (preserve user pan/zoom when browsing history) ---
+            val allCharts = listOf(mainChart, volumeChart, subChart)
+            val candleCountChanged = candles.size != viewportState.prevCandleCount
+
+            if (!viewportState.isInitialized) {
+                if (candles.size > 300) {
+                    val lastX = (candles.size - 1).toFloat()
+                    allCharts.forEach { chart ->
+                        chart.setVisibleXRangeMaximum(300f)
+                        chart.moveViewToX(lastX)
+                    }
+                } else {
+                    allCharts.forEach { chart ->
+                        chart.fitScreen()
+                    }
                 }
-            } else {
-                listOf(mainChart, volumeChart, subChart).forEach { chart ->
-                    chart.fitScreen()
+                viewportState.isInitialized = true
+            } else if (candleCountChanged) {
+                if (candles.size > 300) {
+                    allCharts.forEach { chart ->
+                        chart.setVisibleXRangeMaximum(300f)
+                    }
+                }
+                if (wasFollowingLatest) {
+                    val lastX = (candles.size - 1).toFloat()
+                    if (candles.size > 300 || !mainChart.isFullyZoomedOut) {
+                        allCharts.forEach { chart ->
+                            chart.moveViewToX(lastX)
+                        }
+                    } else {
+                        allCharts.forEach { chart ->
+                            chart.fitScreen()
+                        }
+                    }
+                } else if (prevLowestVisibleX >= 0f) {
+                    allCharts.forEach { chart ->
+                        chart.moveViewToX(prevLowestVisibleX)
+                    }
                 }
             }
+
+            viewportState.prevCandleCount = candles.size
 
             mainChart.invalidate()
             volumeChart.invalidate()
